@@ -555,7 +555,7 @@ const Transactions: React.FC = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `transacciones-completas-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `transacciones-detalladas-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -667,17 +667,10 @@ const Transactions: React.FC = () => {
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <button
             onClick={exportAllTransactionsCSV}
-            className="inline-flex items-center justify-center rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 shadow-sm hover:bg-green-100 mr-2"
+            className="inline-flex items-center justify-center rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 shadow-sm hover:bg-green-100"
           >
             <Download className="h-4 w-4 mr-2" />
-            Exportar Detallado (Todas)
-          </button>
-          <button
-            onClick={exportTransactionsCSV}
-            className="inline-flex items-center justify-center rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-100"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Exportar Filtradas ({filteredTransactions.length})
+            Exportar por Items ({filteredTransactions.length})
           </button>
         </div>
       </div>
