@@ -149,6 +149,7 @@ const Courts: React.FC = () => {
   'https://images.pexels.com/photos/1263350/pexels-photo-1263350.jpeg?auto=compress&cs=tinysrgb&w=400',
   'https://images.pexels.com/photos/1263351/pexels-photo-1263351.jpeg?auto=compress&cs=tinysrgb&w=400',
   'https://collection.cloudinary.com/df3notxwu/73e72947044d654955cffc600403c634',
+    `https://www.istockphoto.com/photo/close-up-of-athletic-man-serving-the-ball-while-playing-paddle-tennis-gm2158557005-579192957`,
   'https://images.pexels.com/photos/1263352/pexels-photo-1263352.jpeg?auto=compress&cs=tinysrgb&w=400',
   'https://images.pexels.com/photos/1263353/pexels-photo-1263353.jpeg?auto=compress&cs=tinysrgb&w=400',
   'https://images.pexels.com/photos/1263354/pexels-photo-1263354.jpeg?auto=compress&cs=tinysrgb&w=400',
