@@ -272,34 +272,69 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </div>
 
                 {/* Desglose de pago combinado */}
-                {transaction.paymentBreakdown && (
+                {(transaction.metodo === 'combinado' || transaction.paymentBreakdown) && (
                   <div className="space-y-2 mt-4">
                     <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
-                    {transaction.paymentBreakdown.efectivo > 0 && (
+                    {(transaction.paymentBreakdown?.efectivo || 0) > 0 && (
                       <div className="flex justify-between p-2 bg-green-50 rounded border border-green-200">
                         <span className="flex items-center text-sm">
                           <Banknote className="h-4 w-4 text-green-600 mr-2" />
                           Efectivo:
                         </span>
-                        <span className="font-medium text-green-800">${transaction.paymentBreakdown.efectivo.toFixed(2)}</span>
+                        <span className="font-medium text-green-800">${(transaction.paymentBreakdown?.efectivo || 0).toFixed(2)}</span>
                       </div>
                     )}
-                    {transaction.paymentBreakdown.transferencia > 0 && (
+                    {(transaction.paymentBreakdown?.transferencia || 0) > 0 && (
                       <div className="flex justify-between p-2 bg-blue-50 rounded border border-blue-200">
                         <span className="flex items-center text-sm">
                           <CreditCard className="h-4 w-4 text-blue-600 mr-2" />
                           Transferencia:
                         </span>
-                        <span className="font-medium text-blue-800">${transaction.paymentBreakdown.transferencia.toFixed(2)}</span>
+                        <span className="font-medium text-blue-800">${(transaction.paymentBreakdown?.transferencia || 0).toFixed(2)}</span>
                       </div>
                     )}
-                    {transaction.paymentBreakdown.expensa > 0 && (
+                    {(transaction.paymentBreakdown?.expensa || 0) > 0 && (
                       <div className="flex justify-between p-2 bg-purple-50 rounded border border-purple-200">
                         <span className="flex items-center text-sm">
                           <FileText className="h-4 w-4 text-purple-600 mr-2" />
                           Expensa:
                         </span>
-                        <span className="font-medium text-purple-800">${transaction.paymentBreakdown.expensa.toFixed(2)}</span>
+                        <span className="font-medium text-purple-800">${(transaction.paymentBreakdown?.expensa || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+                    
+                    {/* Mostrar desglose para pagos simples también */}
+                    {transaction.metodo !== 'combinado' && (
+                      <div className="space-y-2">
+                        {transaction.metodo === 'efectivo' && (
+                          <div className="flex justify-between p-2 bg-green-50 rounded border border-green-200">
+                            <span className="flex items-center text-sm">
+                              <Banknote className="h-4 w-4 text-green-600 mr-2" />
+                              Efectivo:
+                            </span>
+                            <span className="font-medium text-green-800">${transaction.total.toFixed(2)}</span>
+                          </div>
+                        )}
+                        
+                        {transaction.metodo === 'transferencia' && (
+                          <div className="flex justify-between p-2 bg-blue-50 rounded border border-blue-200">
+                            <span className="flex items-center text-sm">
+                              <CreditCard className="h-4 w-4 text-blue-600 mr-2" />
+                              Transferencia:
+                            </span>
+                            <span className="font-medium text-blue-800">${transaction.total.toFixed(2)}</span>
+                          </div>
+                        )}
+                        
+                        {transaction.metodo === 'expensa' && (
+                          <div className="flex justify-between p-2 bg-purple-50 rounded border border-purple-200">
+                            <span className="flex items-center text-sm">
+                              <FileText className="h-4 w-4 text-purple-600 mr-2" />
+                              Expensa:
+                            </span>
+                            <span className="font-medium text-purple-800">${transaction.total.toFixed(2)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
