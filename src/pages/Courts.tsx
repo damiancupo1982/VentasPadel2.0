@@ -94,8 +94,6 @@ const Courts: React.FC = () => {
   const [editingCourtId, setEditingCourtId] = useState<string | null>(null);
   const [editingCourtName, setEditingCourtName] = useState('');
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia' | 'expensa'>('efectivo');
-  const [uploadedImages, setUploadedImages] = useState<Record<string, string>>({});
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // Estados para nueva cancha
   const [nuevaCancha, setNuevaCancha] = useState({
