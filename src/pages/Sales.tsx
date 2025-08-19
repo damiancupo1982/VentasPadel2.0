@@ -83,34 +83,41 @@ const Sales: React.FC = () => {
         return item;
       });
       
+      // Calcular el total final con precios personalizados
+      const finalTotal = finalItems.reduce((sum, item) => sum + item.subtotal, 0);
+      
+      // Preparar el paymentBreakdown correcto según el tipo de pago
+      let finalPaymentBreakdown: { efectivo: number; transferencia: number; expensa: number } | undefined;
+      
+      if (paymentData.paymentMethod === 'combinado') {
+        // Para pagos combinados, usar el desglose proporcionado
+        finalPaymentBreakdown = paymentData.paymentBreakdown;
+      } else {
+        // Para pagos simples, crear el desglose asignando todo al método seleccionado
+        finalPaymentBreakdown = {
+          efectivo: paymentData.paymentMethod === 'efectivo' ? finalTotal : 0,
+          transferencia: paymentData.paymentMethod === 'transferencia' ? finalTotal : 0,
+          expensa: paymentData.paymentMethod === 'expensa' ? finalTotal : 0
+        };
+      }
+      
       const newSale = await addSale({
         items: finalItems,
-        total: finalItems.reduce((sum, item) => sum + item.subtotal, 0),
+        total: finalTotal,
         paymentMethod: paymentData.paymentMethod,
         customerName: paymentData.customerName,
         lotNumber: paymentData.lotNumber,
         courtId: selectedCourt || undefined,
-        paymentBreakdown: paymentData.paymentBreakdown,
+        paymentBreakdown: finalPaymentBreakdown,
       });
       
       // Actualizar el turno activo con la nueva venta
       const updatedSales = [...activeTurn.sales, newSale];
       
       // Calcular incrementos por método de pago
-      let efectivoIncrement = 0;
-      let transferenciaIncrement = 0;
-      let expensaIncrement = 0;
-      
-      if (paymentData.paymentMethod === 'combinado' && paymentData.paymentBreakdown) {
-        efectivoIncrement = paymentData.paymentBreakdown.efectivo;
-        transferenciaIncrement = paymentData.paymentBreakdown.transferencia;
-        expensaIncrement = paymentData.paymentBreakdown.expensa;
-      } else {
-        const saleTotal = finalItems.reduce((sum, item) => sum + item.subtotal, 0);
-        if (paymentData.paymentMethod === 'efectivo') efectivoIncrement = saleTotal;
-        else if (paymentData.paymentMethod === 'transferencia') transferenciaIncrement = saleTotal;
-        else if (paymentData.paymentMethod === 'expensa') expensaIncrement = saleTotal;
-      }
+      const efectivoIncrement = finalPaymentBreakdown?.efectivo || 0;
+      const transferenciaIncrement = finalPaymentBreakdown?.transferencia || 0;
+      const expensaIncrement = finalPaymentBreakdown?.expensa || 0;
       
       const newTotals = {
         efectivo: activeTurn.totals.efectivo + efectivoIncrement,
