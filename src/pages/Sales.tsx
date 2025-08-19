@@ -86,20 +86,8 @@ const Sales: React.FC = () => {
       // Calcular el total final con precios personalizados
       const finalTotal = finalItems.reduce((sum, item) => sum + item.subtotal, 0);
       
-      // Preparar el paymentBreakdown correcto según el tipo de pago
-      let finalPaymentBreakdown: { efectivo: number; transferencia: number; expensa: number } | undefined;
-      
-      if (paymentData.paymentMethod === 'combinado') {
-        // Para pagos combinados, usar el desglose proporcionado
-        finalPaymentBreakdown = paymentData.paymentBreakdown;
-      } else {
-        // Para pagos simples, crear el desglose asignando todo al método seleccionado
-        finalPaymentBreakdown = {
-          efectivo: paymentData.paymentMethod === 'efectivo' ? finalTotal : 0,
-          transferencia: paymentData.paymentMethod === 'transferencia' ? finalTotal : 0,
-          expensa: paymentData.paymentMethod === 'expensa' ? finalTotal : 0
-        };
-      }
+      // El paymentBreakdown ya viene correctamente del Cart
+      const finalPaymentBreakdown = paymentData.paymentBreakdown!; // Siempre existe ahora
       
       const newSale = await addSale({
         items: finalItems,
@@ -115,9 +103,9 @@ const Sales: React.FC = () => {
       const updatedSales = [...activeTurn.sales, newSale];
       
       // Calcular incrementos por método de pago
-      const efectivoIncrement = finalPaymentBreakdown?.efectivo || 0;
-      const transferenciaIncrement = finalPaymentBreakdown?.transferencia || 0;
-      const expensaIncrement = finalPaymentBreakdown?.expensa || 0;
+      const efectivoIncrement = finalPaymentBreakdown.efectivo;
+      const transferenciaIncrement = finalPaymentBreakdown.transferencia;
+      const expensaIncrement = finalPaymentBreakdown.expensa;
       
       const newTotals = {
         efectivo: activeTurn.totals.efectivo + efectivoIncrement,

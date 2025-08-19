@@ -272,7 +272,7 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </div>
 
                 {/* Desglose de pago combinado */}
-                {(transaction.metodo === 'combinado' && transaction.paymentBreakdown) && (
+                {transaction.paymentBreakdown && (
                   <div className="space-y-2 mt-4">
                     <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
                     {transaction.paymentBreakdown.efectivo > 0 && (
@@ -302,55 +302,31 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         <span className="font-medium text-purple-800">${transaction.paymentBreakdown.expensa.toFixed(2)}</span>
                       </div>
                     )}
-                  </div>
-                )}
-                
-                {/* Mostrar desglose para pagos simples cuando no hay paymentBreakdown */}
-                {(transaction.metodo !== 'combinado' || !transaction.paymentBreakdown) && (
-                  <div className="space-y-2 mt-4">
-                    <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
-                    {transaction.metodo === 'efectivo' && (
-                      <div className="flex justify-between p-2 bg-green-50 rounded border border-green-200">
-                        <span className="flex items-center text-sm">
-                          <Banknote className="h-4 w-4 text-green-600 mr-2" />
-                          Efectivo:
-                        </span>
-                        <span className="font-medium text-green-800">${transaction.total.toFixed(2)}</span>
-                      </div>
-                    )}
-                    
-                    {transaction.metodo === 'transferencia' && (
-                      <div className="flex justify-between p-2 bg-blue-50 rounded border border-blue-200">
-                        <span className="flex items-center text-sm">
-                          <CreditCard className="h-4 w-4 text-blue-600 mr-2" />
-                          Transferencia:
-                        </span>
-                        <span className="font-medium text-blue-800">${transaction.total.toFixed(2)}</span>
-                      </div>
-                    )}
-                    
-                    {transaction.metodo === 'expensa' && (
-                      <div className="flex justify-between p-2 bg-purple-50 rounded border border-purple-200">
-                        <span className="flex items-center text-sm">
-                          <FileText className="h-4 w-4 text-purple-600 mr-2" />
-                          Expensa:
-                        </span>
-                        <span className="font-medium text-purple-800">${transaction.total.toFixed(2)}</span>
+                    {transaction.paymentBreakdown.efectivo === 0 && 
+                     transaction.paymentBreakdown.transferencia === 0 && 
+                     transaction.paymentBreakdown.expensa === 0 && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded">
+                        <p className="text-sm text-red-800">
+                          ⚠️ Error: Todos los montos del desglose están en $0
+                        </p>
                       </div>
                     )}
                   </div>
                 )}
                 
-                {/* Forzar desglose para pagos combinados sin paymentBreakdown */}
-                {transaction.metodo === 'combinado' && !transaction.paymentBreakdown && (
+                {/* Mostrar mensaje de error si no hay paymentBreakdown */}
+                {!transaction.paymentBreakdown && (
                   <div className="space-y-2 mt-4">
                     <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-                      <p className="text-sm text-yellow-800">
-                        ⚠️ Esta transacción fue registrada como pago combinado pero no tiene desglose detallado.
+                    <div className="p-3 bg-red-50 border border-red-200 rounded">
+                      <p className="text-sm text-red-800">
+                        ❌ Esta transacción no tiene información de desglose de pagos.
                       </p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        Total: ${transaction.total.toFixed(2)} (método no especificado)
+                      <p className="text-xs text-red-700 mt-1">
+                        Total: ${transaction.total.toFixed(2)} - Método: {transaction.metodo}
+                      </p>
+                      <p className="text-xs text-red-600 mt-1">
+                        Esta venta fue registrada antes de la corrección del sistema.
                       </p>
                     </div>
                   </div>

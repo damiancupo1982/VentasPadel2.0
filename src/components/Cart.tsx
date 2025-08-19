@@ -115,17 +115,32 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, onCheckout }) => {
   const handleConfirmSale = () => {
     if (!validateForm()) return;
     
-    // Preparar datos de pago
-    const paymentData: any = {
+    // Preparar datos de pago con paymentBreakdown SIEMPRE
+    let finalPaymentBreakdown: { efectivo: number; transferencia: number; expensa: number };
+    
+    if (paymentMethod === 'combinado') {
+      // Para pagos combinados, usar el desglose del usuario
+      finalPaymentBreakdown = {
+        efectivo: paymentAmounts.efectivo,
+        transferencia: paymentAmounts.transferencia,
+        expensa: paymentAmounts.expensa
+      };
+    } else {
+      // Para pagos simples, crear desglose asignando todo al método seleccionado
+      finalPaymentBreakdown = {
+        efectivo: paymentMethod === 'efectivo' ? total : 0,
+        transferencia: paymentMethod === 'transferencia' ? total : 0,
+        expensa: paymentMethod === 'expensa' ? total : 0
+      };
+    }
+    
+    const paymentData = {
       paymentMethod,
       customerName: customerName.trim() || undefined,
       lotNumber: lotNumber.trim() || undefined,
+      paymentBreakdown: finalPaymentBreakdown, // SIEMPRE incluir el desglose
+      customPrices: undefined as Record<string, number> | undefined
     };
-    
-    // Agregar breakdown para pagos combinados
-    if (paymentMethod === 'combinado') {
-      paymentData.paymentBreakdown = paymentAmounts;
-    }
     
     // Agregar precios personalizados si hay cambios
     const hasCustomPrices = Object.keys(editingPrices).some(productId => {
