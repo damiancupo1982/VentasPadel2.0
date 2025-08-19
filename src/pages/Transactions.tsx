@@ -344,12 +344,60 @@ const Transactions: React.FC = () => {
 
   const exportTransactionsCSV = () => {
     if (filteredTransactions.length === 0) {
-      alert('No hay transacciones para exportar');
+      alert('No hay transacciones filtradas para exportar');
       return;
     }
 
-    const headers = ['Fecha', 'Hora', 'Tipo', 'Recibo', 'ID Retiro', 'Cliente', 'Lote', 'Origen', 'Total', 'Método', 'Notas/Detalle', 'Monto Efectivo', 'Monto Transferencia', 'Monto Expensa'];
-    const rows = filteredTransactions.map(transaction => [
+    const headers = [
+      'Fecha', 
+      'Hora', 
+      'Tipo', 
+      'Recibo', 
+      'ID Retiro', 
+      'Cliente', 
+      'Lote', 
+      'Origen', 
+      'Total', 
+      'Método', 
+      'Notas/Detalle', 
+      'Monto Efectivo', 
+      'Monto Transferencia', 
+      'Monto Expensa'
+    ];
+    
+    const rows = filteredTransactions.map(transaction => {
+      // Calcular montos por método de pago
+      let efectivoAmount = 0;
+      let transferenciaAmount = 0;
+      let expensaAmount = 0;
+      
+      if (transaction.paymentBreakdown) {
+        // Pago combinado con desglose
+        efectivoAmount = transaction.paymentBreakdown.efectivo || 0;
+        transferenciaAmount = transaction.paymentBreakdown.transferencia || 0;
+        expensaAmount = transaction.paymentBreakdown.expensa || 0;
+      } else {
+        // Pago simple: asignar todo el monto al método correspondiente
+        if (transaction.metodo === 'efectivo') {
+          efectivoAmount = transaction.total;
+        } else if (transaction.metodo === 'transferencia') {
+          transferenciaAmount = transaction.total;
+        } else if (transaction.metodo === 'expensa') {
+          expensaAmount = transaction.total;
+        }
+      }
+      
+      const paymentMethodText = transaction.metodo === 'combinado' ? 
+        (() => {
+          const methods: string[] = [];
+          if (efectivoAmount > 0) methods.push('Efectivo');
+          if (transferenciaAmount > 0) methods.push('Transferencia');
+          if (expensaAmount > 0) methods.push('Expensa');
+          return methods.join(' + ');
+        })()
+        : transaction.metodo;
+      
+      return [
       transaction.fecha,
       transaction.hora,
       getTypeLabel(transaction.tipo),
@@ -359,21 +407,13 @@ const Transactions: React.FC = () => {
       transaction.lote || '-',
       transaction.origen,
       transaction.total,
-      transaction.metodo === 'combinado' ? 
-        (() => {
-          const methods: string[] = [];
-          if (transaction.paymentBreakdown?.efectivo > 0) methods.push('Efectivo');
-          if (transaction.paymentBreakdown?.transferencia > 0) methods.push('Transferencia');
-          if (transaction.paymentBreakdown?.expensa > 0) methods.push('Expensa');
-          return methods.join(' + ');
-        })()
-        : transaction.metodo,
+        paymentMethodText,
       transaction.notes || '-',
-      // Montos desglosados
-      transaction.paymentBreakdown?.efectivo || (transaction.metodo === 'efectivo' ? transaction.total : 0),
-      transaction.paymentBreakdown?.transferencia || (transaction.metodo === 'transferencia' ? transaction.total : 0),
-      transaction.paymentBreakdown?.expensa || (transaction.metodo === 'expensa' ? transaction.total : 0)
-    ]);
+        efectivoAmount,
+        transferenciaAmount,
+        expensaAmount
+      ];
+    });
 
     const csvContent = [headers, ...rows]
       .map(row => row.map(cell => `"${cell}"`).join(','))
@@ -383,7 +423,7 @@ const Transactions: React.FC = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `transacciones-historicas-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `transacciones-filtradas-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -626,10 +666,17 @@ const Transactions: React.FC = () => {
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <button
             onClick={exportAllTransactionsCSV}
-            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+            className="inline-flex items-center justify-center rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 shadow-sm hover:bg-green-100 mr-2"
           >
             <Download className="h-4 w-4 mr-2" />
-            Exportar Todas las Transacciones
+            Exportar Detallado (Todas)
+          </button>
+          <button
+            onClick={exportTransactionsCSV}
+            className="inline-flex items-center justify-center rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-100"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Exportar Filtradas ({filteredTransactions.length})
           </button>
         </div>
       </div>

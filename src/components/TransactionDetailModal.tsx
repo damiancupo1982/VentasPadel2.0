@@ -272,7 +272,7 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </div>
 
                 {/* Desglose de pago combinado */}
-                {transaction.paymentBreakdown && (
+                {(transaction.metodo === 'combinado' && transaction.paymentBreakdown) && (
                   <div className="space-y-2 mt-4">
                     <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
                     {transaction.paymentBreakdown.efectivo > 0 && (
@@ -306,7 +306,7 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 )}
                 
                 {/* Mostrar desglose para pagos simples cuando no hay paymentBreakdown */}
-                {!transaction.paymentBreakdown && transaction.metodo !== 'combinado' && (
+                {(transaction.metodo !== 'combinado' || !transaction.paymentBreakdown) && (
                   <div className="space-y-2 mt-4">
                     <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
                     {transaction.metodo === 'efectivo' && (
@@ -338,6 +338,21 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         <span className="font-medium text-purple-800">${transaction.total.toFixed(2)}</span>
                       </div>
                     )}
+                  </div>
+                )}
+                
+                {/* Forzar desglose para pagos combinados sin paymentBreakdown */}
+                {transaction.metodo === 'combinado' && !transaction.paymentBreakdown && (
+                  <div className="space-y-2 mt-4">
+                    <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <p className="text-sm text-yellow-800">
+                        ⚠️ Esta transacción fue registrada como pago combinado pero no tiene desglose detallado.
+                      </p>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        Total: ${transaction.total.toFixed(2)} (método no especificado)
+                      </p>
+                    </div>
                   </div>
                 )}
 
