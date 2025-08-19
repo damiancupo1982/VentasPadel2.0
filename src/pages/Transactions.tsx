@@ -124,6 +124,7 @@ const Transactions: React.FC = () => {
                   sale.courtId || 'Kiosco',
           total: sale.total,
           metodo: sale.paymentMethod,
+          paymentBreakdown: sale.paymentBreakdown, // ✅ FIX: conservar el desglose
           items: sale.items,
           createdAt: sale.createdAt
         };
