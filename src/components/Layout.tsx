@@ -128,7 +128,7 @@ const Layout: React.FC = () => {
               
               <Home className="h-8 w-8 text-green-600 mr-3" />
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Nuevo Nombre</h1>
+                <h1 className="text-xl font-bold text-gray-900">VNP-San Benito</h1>
                 {isAdmin && (
                   <span className="text-xs text-green-600 font-medium">Modo Administrador</span>
                 )}
