@@ -22,8 +22,7 @@ import {
   Settings,
   Image,
   Camera,
-  CheckCircle,
-  Upload
+  CheckCircle
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { addCourtBill, updateAdminTurn } from '../utils/db';
@@ -104,6 +103,10 @@ const Courts: React.FC = () => {
     image: ''
   });
 
+  const [newCourtData, setNewCourtData] = useState({
+    customImageFile: null as File | null
+  });
+
   const [formReserva, setFormReserva] = useState({
     cancha: '', numeroLote: '', nombreCliente: '',
     horarioInicio: '', horarioFin: '',
@@ -152,8 +155,9 @@ const Courts: React.FC = () => {
     'https://images.pexels.com/photos/8007020/pexels-photo-8007020.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel con iluminación
     'https://images.pexels.com/photos/8007021/pexels-photo-8007021.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel vista aérea
     'https://images.pexels.com/photos/6253922/pexels-photo-6253922.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel con jugadores
-    'https://images.pexels.com/photos/8007022/pexels-photo-8007022.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel nocturna
-];
+    'https://images.pexels.com/photos/8007022/pexels-photo-8007022.jpeg?auto=compress&cs=tinysrgb&w=400' // Cancha de pádel nocturna
+  ];
+
   // Persistencia local
   const guardarDatos = () => {
     try {
@@ -226,6 +230,14 @@ const Courts: React.FC = () => {
     return (prod.stock ?? 0) - qtyEnFactura(productId);
   };
 
+  // Función para manejar subida de imagen personalizada
+  const handleCustomImageUpload = (file: File) => {
+    setNewCourtData({ customImageFile: file });
+    // Crear URL temporal para preview
+    const imageUrl = URL.createObjectURL(file);
+    setNuevaCancha({ ...nuevaCancha, image: imageUrl });
+  };
+
   // Crear nueva cancha
   const handleCrearCancha = () => {
     if (!nuevaCancha.name.trim()) {
@@ -244,6 +256,7 @@ const Courts: React.FC = () => {
 
     setCourtsConfig(prev => [...prev, nuevaCanchaConfig]);
     setNuevaCancha({ name: '', color: 'bg-blue-500', image: '' });
+    setNewCourtData({ customImageFile: null });
     setMostrarFormCancha(false);
     alert('Cancha creada exitosamente');
   };
@@ -808,7 +821,7 @@ const Courts: React.FC = () => {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Color de Identificación</label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       {coloresDisponibles.map(color => (
                         <button
                           key={color}
@@ -822,9 +835,45 @@ const Courts: React.FC = () => {
                     </div>
                   </div>
                 </div>
-
+                
+                {/* Opción para subir imagen personalizada */}
+                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="text-sm font-medium text-blue-800 mb-2">📸 Subir Imagen Personalizada</h4>
+                  <div className="flex items-center justify-center w-full">
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-blue-300 border-dashed rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100">
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <Camera className="w-8 h-8 mb-4 text-blue-500" />
+                        <p className="mb-2 text-sm text-blue-500">
+                          <span className="font-semibold">Haz clic para subir</span> tu propia imagen
+                        </p>
+                        <p className="text-xs text-blue-500">JPG, PNG (MAX. 5MB)</p>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleCustomImageUpload(file);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  
+                  {newCourtData.customImageFile && (
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center">
+                        <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                        <span className="text-sm text-green-800">
+                          Imagen seleccionada: <strong>{newCourtData.customImageFile.name}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Imagen de la Cancha</label>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">🖼️ O selecciona una imagen predefinida:</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {imagenesDisponibles.map((imagen, index) => (
                       <div
