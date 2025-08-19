@@ -149,6 +149,7 @@ const Courts: React.FC = () => {
     'https://images.pexels.com/photos/1263350/pexels-photo-1263350.jpeg?auto=compress&cs=tinysrgb&w=400',
     'https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.cronista.com%2Fnegocios%2Fremax-se-expande-en-el-pais-pese-al-conflicto-con-las-inmobiliarias-su-plan-2023%2F&psig=AOvVaw1gv89FC5EtoU4_ciM_EA-R&ust=1755649248413000&source=images&cd=vfe&opi=89978449&ved=0CBIQjRxqFwoTCLDljKjNlY8DFQAAAAAdAAAAABAE',
     'https://images.pexels.com/photos/1263351/pexels-photo-1263351.jpeg?auto=compress&cs=tinysrgb&w=400',
+    `https://collection.cloudinary.com/df3notxwu/73e72947044d654955cffc600403c634`
     'https://images.pexels.com/photos/1263352/pexels-photo-1263352.jpeg?auto=compress&cs=tinysrgb&w=400',
     'https://images.pexels.com/photos/1263353/pexels-photo-1263353.jpeg?auto=compress&cs=tinysrgb&w=400',
     'https://images.pexels.com/photos/1263354/pexels-photo-1263354.jpeg?auto=compress&cs=tinysrgb&w=400'
