@@ -393,11 +393,11 @@ const Sales: React.FC = () => {
             </div>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">
-            Villanueva Pádel - Sistema de Ventas
+            Villanueva Pádel - SAN BENITO
           </h1>
           <p className="text-blue-100 text-lg">
             {isAdmin 
-              ? 'Panel completo de ventas con acceso administrativo' 
+              ? 'Panel completo de ventas creado por Damian Cupo' 
               : 'Sistema de ventas rápidas para empleados'
             }
           </p>
