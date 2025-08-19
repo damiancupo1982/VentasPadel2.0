@@ -405,31 +405,22 @@ const Transactions: React.FC = () => {
       'Cliente',
       'Lote',
       'Origen',
-      'Total',
+      'Item',
+      'Cantidad',
+      'Precio Unitario',
+      'Subtotal Item',
+      'Total Transacción',
       'Método',
       'Efectivo',
       'Transferencia', 
       'Expensa',
-      'Notas',
-      'Items',
-      'Cantidades',
-      'Precios'
+      'Notas'
     ];
 
-    const rows = filteredTransactions.map(transaction => {
-      const itemNames = transaction.items?.map(item => 
-        item.product?.name || item.service?.name || item.nombre || 'Item'
-      ).join('; ') || '';
-      
-      const itemQuantities = transaction.items?.map(item => 
-        item.quantity || item.cantidad || 1
-      ).join('; ') || '';
-      
-      const itemPrices = transaction.items?.map(item => 
-        item.product?.price || item.service?.price || item.precio || 0
-      ).join('; ') || '';
-
-      return [
+    const rows: string[][] = [];
+    
+    filteredTransactions.forEach(transaction => {
+      const baseTransactionData = [
         transaction.fecha,
         transaction.hora,
         getTypeLabel(transaction.tipo),
@@ -437,25 +428,65 @@ const Transactions: React.FC = () => {
         transaction.withdrawalId || '-',
         transaction.cliente,
         transaction.lote || '-',
-        transaction.origen,
-        transaction.total,
-        transaction.metodo === 'combinado' ? 
-          (() => {
-            const methods: string[] = [];
-            if (transaction.paymentBreakdown?.efectivo > 0) methods.push('Efectivo');
-            if (transaction.paymentBreakdown?.transferencia > 0) methods.push('Transferencia');
-            if (transaction.paymentBreakdown?.expensa > 0) methods.push('Expensa');
-            return methods.join(' + ');
-          })()
-          : transaction.metodo,
-        transaction.paymentBreakdown?.efectivo || (transaction.metodo === 'efectivo' ? transaction.total : 0),
-        transaction.paymentBreakdown?.transferencia || (transaction.metodo === 'transferencia' ? transaction.total : 0),
-        transaction.paymentBreakdown?.expensa || (transaction.metodo === 'expensa' ? transaction.total : 0),
-        transaction.notes || '-',
-        itemNames,
-        itemQuantities,
-        itemPrices
+        transaction.origen
       ];
+      
+      const paymentMethodText = transaction.metodo === 'combinado' ? 
+        (() => {
+          const methods: string[] = [];
+          if (transaction.paymentBreakdown?.efectivo > 0) methods.push('Efectivo');
+          if (transaction.paymentBreakdown?.transferencia > 0) methods.push('Transferencia');
+          if (transaction.paymentBreakdown?.expensa > 0) methods.push('Expensa');
+          return methods.join(' + ');
+        })()
+        : transaction.metodo;
+      
+      const efectivoAmount = transaction.paymentBreakdown?.efectivo || (transaction.metodo === 'efectivo' ? transaction.total : 0);
+      const transferenciaAmount = transaction.paymentBreakdown?.transferencia || (transaction.metodo === 'transferencia' ? transaction.total : 0);
+      const expensaAmount = transaction.paymentBreakdown?.expensa || (transaction.metodo === 'expensa' ? transaction.total : 0);
+      
+      // Si la transacción tiene items, crear un renglón por cada item
+      if (transaction.items && transaction.items.length > 0) {
+        transaction.items.forEach((item, itemIndex) => {
+          const itemName = item.product?.name || item.service?.name || item.nombre || 'Item desconocido';
+          const itemQuantity = item.quantity || item.cantidad || 1;
+          const itemPrice = item.product?.price || item.service?.price || item.precio || 0;
+          const itemSubtotal = item.subtotal || (itemPrice * itemQuantity);
+          
+          // Solo en el primer item de cada transacción incluir totales y métodos de pago
+          // En los demás items dejar esas columnas vacías
+          const isFirstItem = itemIndex === 0;
+          
+          rows.push([
+            ...baseTransactionData,
+            itemName,
+            itemQuantity.toString(),
+            itemPrice.toString(),
+            itemSubtotal.toString(),
+            isFirstItem ? transaction.total.toString() : '', // Total solo en primer item
+            isFirstItem ? paymentMethodText : '', // Método solo en primer item
+            isFirstItem ? efectivoAmount.toString() : '', // Efectivo solo en primer item
+            isFirstItem ? transferenciaAmount.toString() : '', // Transferencia solo en primer item
+            isFirstItem ? expensaAmount.toString() : '', // Expensa solo en primer item
+            isFirstItem ? (transaction.notes || '') : '' // Notas solo en primer item
+          ]);
+        });
+      } else {
+        // Si no tiene items, crear un renglón con la transacción completa
+        rows.push([
+          ...baseTransactionData,
+          'Sin items detallados', // Item
+          '1', // Cantidad
+          transaction.total.toString(), // Precio unitario = total
+          transaction.total.toString(), // Subtotal = total
+          transaction.total.toString(), // Total transacción
+          paymentMethodText, // Método
+          efectivoAmount.toString(), // Efectivo
+          transferenciaAmount.toString(), // Transferencia
+          expensaAmount.toString(), // Expensa
+          transaction.notes || '' // Notas
+        ]);
+      }
     });
 
     const csvContent = [headers, ...rows]
