@@ -143,16 +143,14 @@ const Courts: React.FC = () => {
   ];
 
   const imagenesDisponibles = [
-  'https://images.pexels.com/photos/209977/pexels-photo-209977.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'https://images.pexels.com/photos/1263348/pexels-photo-1263348.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'https://images.pexels.com/photos/1263349/pexels-photo-1263349.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'https://images.pexels.com/photos/1263350/pexels-photo-1263350.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'https://images.pexels.com/photos/1263351/pexels-photo-1263351.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'https://collection.cloudinary.com/df3notxwu/73e72947044d654955cffc600403c634',
-    `https://www.istockphoto.com/photo/close-up-of-athletic-man-serving-the-ball-while-playing-paddle-tennis-gm2158557005-579192957`,
-  'https://images.pexels.com/photos/1263352/pexels-photo-1263352.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'https://images.pexels.com/photos/1263353/pexels-photo-1263353.jpeg?auto=compress&cs=tinysrgb&w=400',
-  'https://images.pexels.com/photos/1263354/pexels-photo-1263354.jpeg?auto=compress&cs=tinysrgb&w=400',
+    'https://images.pexels.com/photos/6253919/pexels-photo-6253919.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel moderna
+    'https://images.pexels.com/photos/6253920/pexels-photo-6253920.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel con césped artificial
+    'https://images.pexels.com/photos/6253921/pexels-photo-6253921.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel profesional
+    'https://images.pexels.com/photos/8007019/pexels-photo-8007019.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel al aire libre
+    'https://images.pexels.com/photos/8007020/pexels-photo-8007020.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel con iluminación
+    'https://images.pexels.com/photos/8007021/pexels-photo-8007021.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel vista aérea
+    'https://images.pexels.com/photos/6253922/pexels-photo-6253922.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel con jugadores
+    'https://images.pexels.com/photos/8007022/pexels-photo-8007022.jpeg?auto=compress&cs=tinysrgb&w=400', // Cancha de pádel nocturna
 ];
   // Persistencia local
   const guardarDatos = () => {
