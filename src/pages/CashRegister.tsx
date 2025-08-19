@@ -427,9 +427,26 @@ const CashRegister: React.FC = () => {
         })()
         : transaction.metodo;
       
-      const efectivoAmount = transaction.paymentBreakdown?.efectivo || (transaction.metodo === 'efectivo' ? transaction.total : 0);
-      const transferenciaAmount = transaction.paymentBreakdown?.transferencia || (transaction.metodo === 'transferencia' ? transaction.total : 0);
-      const expensaAmount = transaction.paymentBreakdown?.expensa || (transaction.metodo === 'expensa' ? transaction.total : 0);
+      // Calcular montos por método de pago
+      let efectivoAmount = 0;
+      let transferenciaAmount = 0;
+      let expensaAmount = 0;
+      
+      if (transaction.paymentBreakdown) {
+        // Pago combinado con desglose
+        efectivoAmount = transaction.paymentBreakdown.efectivo || 0;
+        transferenciaAmount = transaction.paymentBreakdown.transferencia || 0;
+        expensaAmount = transaction.paymentBreakdown.expensa || 0;
+      } else {
+        // Pago simple: asignar todo el monto al método correspondiente
+        if (transaction.metodo === 'efectivo') {
+          efectivoAmount = transaction.total;
+        } else if (transaction.metodo === 'transferencia') {
+          transferenciaAmount = transaction.total;
+        } else if (transaction.metodo === 'expensa') {
+          expensaAmount = transaction.total;
+        }
+      }
       
       // Si la transacción tiene items, crear un renglón por cada item
       if (transaction.items && transaction.items.length > 0) {
