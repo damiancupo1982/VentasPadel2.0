@@ -272,7 +272,7 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </div>
 
                 {/* Desglose de pago combinado */}
-                {transaction.paymentBreakdown && (
+                {transaction.paymentBreakdown ? (
                   <div className="space-y-2 mt-4">
                     <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
                     {transaction.paymentBreakdown.efectivo > 0 && (
@@ -302,20 +302,9 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         <span className="font-medium text-purple-800">${transaction.paymentBreakdown.expensa.toFixed(2)}</span>
                       </div>
                     )}
-                    {transaction.paymentBreakdown.efectivo === 0 && 
-                     transaction.paymentBreakdown.transferencia === 0 && 
-                     transaction.paymentBreakdown.expensa === 0 && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded">
-                        <p className="text-sm text-red-800">
-                          ⚠️ Error: Todos los montos del desglose están en $0
-                        </p>
-                      </div>
-                    )}
                   </div>
-                )}
-                
-                {/* Mostrar mensaje de error si no hay paymentBreakdown */}
-                {!transaction.paymentBreakdown && (
+                ) : (
+                  // Mostrar mensaje de error si no hay paymentBreakdown
                   <div className="space-y-2 mt-4">
                     <h4 className="font-medium text-blue-900 text-sm">Desglose de Pagos:</h4>
                     <div className="p-3 bg-red-50 border border-red-200 rounded">

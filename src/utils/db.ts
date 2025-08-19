@@ -234,8 +234,27 @@ export const addSale = async (sale: Omit<Sale, 'id' | 'receiptNumber' | 'created
   const sales = await getSales();
   const receiptNumber = await getNextReceiptNumber();
 
+  // Asegurar que paymentBreakdown existe para todos los tipos de pago
+  let finalPaymentBreakdown = sale.paymentBreakdown;
+  
+  if (!finalPaymentBreakdown) {
+    // Si no viene paymentBreakdown, crearlo basado en el método de pago
+    if (sale.paymentMethod === 'efectivo') {
+      finalPaymentBreakdown = { efectivo: sale.total, transferencia: 0, expensa: 0 };
+    } else if (sale.paymentMethod === 'transferencia') {
+      finalPaymentBreakdown = { efectivo: 0, transferencia: sale.total, expensa: 0 };
+    } else if (sale.paymentMethod === 'expensa') {
+      finalPaymentBreakdown = { efectivo: 0, transferencia: 0, expensa: sale.total };
+    } else {
+      // Para 'combinado' sin desglose, distribuir equitativamente (fallback)
+      const third = Math.round(sale.total / 3);
+      finalPaymentBreakdown = { efectivo: third, transferencia: third, expensa: sale.total - (third * 2) };
+    }
+  }
+
   const newSale: Sale = {
     ...sale,
+    paymentBreakdown: finalPaymentBreakdown,
     receiptNumber,
     id: Date.now().toString(),
     createdAt: new Date().toISOString()
