@@ -67,6 +67,13 @@ const Layout: React.FC = () => {
       adminOnly: false
     },
     {
+      to: "/agenda",
+      icon: Calendar,
+      label: "Agenda",
+      description: "Vista de ocupación de canchas",
+      adminOnly: false
+    },
+    {
       to: "/dashboard",
       icon: BarChart3,
       label: "Dashboard",
