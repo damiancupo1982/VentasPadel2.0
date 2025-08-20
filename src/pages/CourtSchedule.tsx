@@ -374,17 +374,52 @@ const CourtSchedule: React.FC = () => {
         }
       });
       
-      // Cargar todas las fuentes de reservas
-      const [openBills, allReservations, allCourtBills] = await Promise.all([
-        getOpenBills(),
-        getReservations(),
-        getCourtBills()
-      ]);
+      // Cargar todas las fuentes de reservas - CORREGIDO para leer las claves correctas
+      const openBills = await getOpenBills();
+      
+      // Leer reservas desde la clave correcta que usa el módulo de canchas
+      let allReservations: any[] = [];
+      try {
+        const reservasFromLocalStorage = localStorage.getItem('reservas-canchas-v2');
+        if (reservasFromLocalStorage) {
+          allReservations = JSON.parse(reservasFromLocalStorage);
+          console.log('✅ Reservas leídas desde reservas-canchas-v2:', allReservations);
+        }
+      } catch (error) {
+        console.error('❌ Error leyendo reservas-canchas-v2:', error);
+      }
+      
+      // También intentar leer desde facturas abiertas
+      let facturasAbiertas: any[] = [];
+      try {
+        const facturasFromLocalStorage = localStorage.getItem('facturas-abiertas-v2');
+        if (facturasFromLocalStorage) {
+          facturasAbiertas = JSON.parse(facturasFromLocalStorage);
+          console.log('✅ Facturas abiertas leídas:', facturasAbiertas);
+        }
+      } catch (error) {
+        console.error('❌ Error leyendo facturas-abiertas-v2:', error);
+      }
+      
+      const allCourtBills = await getCourtBills();
       
       // Debug: mostrar estructura de datos
       console.log('🔍 Datos cargados:', {
         openBills: openBills.map(b => ({ id: b.reservationId, courtId: b.courtId, startDate: b.startDate, startTime: b.startTime })),
-        reservations: allReservations.map(r => ({ id: r.id, courtId: r.courtId, startDate: r.startDate, startTime: r.startTime })),
+        reservations: allReservations.map(r => ({ 
+          id: r.id || r.reservaId, 
+          courtId: r.courtId || r.cancha, 
+          startDate: r.startDate || r.fecha, 
+          startTime: r.startTime || r.horarioInicio,
+          customerName: r.customerName || r.nombreCliente
+        })),
+        facturasAbiertas: facturasAbiertas.map(f => ({
+          id: f.id || f.reservaId,
+          courtId: f.courtId || f.cancha,
+          startDate: f.startDate || f.fecha,
+          startTime: f.startTime || f.horarioInicio,
+          customerName: f.customerName || f.cliente
+        })),
         courtBills: allCourtBills.map(b => ({ id: b.id, courtId: b.courtId, startDate: b.startDate, startTime: b.startTime }))
       });
       
@@ -399,11 +434,20 @@ const CourtSchedule: React.FC = () => {
         return normalizedDate === selectedDate;
       });
       
+      // Filtrar reservas desde reservas-canchas-v2
       const dayReservations = allReservations.filter(reservation => {
-        // Probar múltiples campos de fecha
-        const reservationDate = reservation.startDate || reservation.startTime || reservation.createdAt;
+        // Probar múltiples campos de fecha con diferentes formatos
+        const reservationDate = reservation.startDate || reservation.fecha || reservation.startTime || reservation.horarioInicio || reservation.createdAt;
         const normalizedDate = new Date(reservationDate).toISOString().split('T')[0];
         console.log('Reservation fecha:', reservationDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
+        return normalizedDate === selectedDate;
+      });
+      
+      // Filtrar facturas abiertas
+      const dayFacturasAbiertas = facturasAbiertas.filter(factura => {
+        const facturaDate = factura.startDate || factura.fecha || factura.startTime || factura.horarioInicio || factura.createdAt;
+        const normalizedDate = new Date(facturaDate).toISOString().split('T')[0];
+        console.log('Factura Abierta fecha:', facturaDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
         return normalizedDate === selectedDate;
       });
       
@@ -418,6 +462,7 @@ const CourtSchedule: React.FC = () => {
       console.log('📊 Reservas encontradas:', {
         openBills: dayOpenBills.length,
         reservations: dayReservations.length,
+        facturasAbiertas: dayFacturasAbiertas.length,
         courtBills: dayCourtBills.length
       });
 
@@ -425,6 +470,7 @@ const CourtSchedule: React.FC = () => {
       console.log('📋 Reservas del día filtradas:', {
         openBills: dayOpenBills,
         reservations: dayReservations,
+        facturasAbiertas: dayFacturasAbiertas,
         courtBills: dayCourtBills
       });
       // Crear estructura de ocupación por cancha
@@ -454,13 +500,18 @@ const CourtSchedule: React.FC = () => {
             }
           });
         
-        // Llenar con reservas normales (CourtReservation)
+        // Llenar con reservas desde reservas-canchas-v2
         dayReservations
-          .filter(reservation => reservation.courtId === court.id)
+          .filter(reservation => {
+            const courtId = reservation.courtId || reservation.cancha;
+            return courtId === court.id || courtId === court.name;
+          })
           .forEach(reservation => {
-            const startTime = reservation.startTime || reservation.startDate || reservation.createdAt;
+            const startTime = reservation.startTime || reservation.horarioInicio || reservation.startDate || reservation.fecha || reservation.createdAt;
             const startHour = new Date(startTime).getHours();
-            const endHour = reservation.endTime ? new Date(reservation.endTime).getHours() : startHour + 1;
+            const endHour = reservation.endTime ? new Date(reservation.endTime).getHours() : 
+                           reservation.horarioFin ? new Date(reservation.horarioFin).getHours() : 
+                           startHour + 2; // Default 2 horas
             
             console.log(`🏓 Reservation en ${court.name}: ${startHour}:00 - ${endHour}:00`);
             
@@ -469,7 +520,55 @@ const CourtSchedule: React.FC = () => {
               if (hour >= 8) {
                 // Solo ocupar si no hay ya una factura abierta
                 if (!reservations[hour.toString()]) {
-                  reservations[hour.toString()] = reservation;
+                  // Normalizar la reserva al formato esperado
+                  const normalizedReservation = {
+                    ...reservation,
+                    customerName: reservation.customerName || reservation.nombreCliente || 'Cliente',
+                    lotNumber: reservation.lotNumber || reservation.numeroLote || '0',
+                    courtName: reservation.courtName || court.name,
+                    startTime: startTime,
+                    endTime: reservation.endTime || reservation.horarioFin,
+                    startDate: reservation.startDate || reservation.fecha,
+                    customerType: reservation.customerType || 'guest'
+                  };
+                  reservations[hour.toString()] = normalizedReservation;
+                }
+              }
+            }
+          });
+        
+        // Llenar con facturas abiertas desde facturas-abiertas-v2
+        dayFacturasAbiertas
+          .filter(factura => {
+            const courtId = factura.courtId || factura.cancha;
+            return courtId === court.id || courtId === court.name;
+          })
+          .forEach(factura => {
+            const startTime = factura.startTime || factura.horarioInicio || factura.startDate || factura.fecha || factura.createdAt;
+            const startHour = new Date(startTime).getHours();
+            const endHour = factura.endTime ? new Date(factura.endTime).getHours() : 
+                           factura.horarioFin ? new Date(factura.horarioFin).getHours() : 
+                           startHour + 2; // Default 2 horas
+            
+            console.log(`🏓 Factura Abierta en ${court.name}: ${startHour}:00 - ${endHour}:00`);
+            
+            // Marcar las horas ocupadas
+            for (let hour = startHour; hour <= Math.min(endHour, 23); hour++) {
+              if (hour >= 8) {
+                // Solo ocupar si no hay ya una reserva
+                if (!reservations[hour.toString()]) {
+                  // Normalizar la factura al formato esperado
+                  const normalizedFactura = {
+                    ...factura,
+                    customerName: factura.customerName || factura.cliente || 'Cliente',
+                    lotNumber: factura.lotNumber || factura.numeroLote || '0',
+                    courtName: factura.courtName || court.name,
+                    startTime: startTime,
+                    endTime: factura.endTime || factura.horarioFin,
+                    startDate: factura.startDate || factura.fecha,
+                    customerType: factura.customerType || 'guest'
+                  };
+                  reservations[hour.toString()] = normalizedFactura;
                 }
               }
             }
