@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, User, MapPin, Eye, X, Phone, DollarSign } from 'lucide-react';
+import { Calendar, Clock, User, MapPin, Eye, X, Phone, DollarSign, ChevronUp, ChevronDown } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { getOpenBills, getReservations, getCourtBills } from '../utils/db';
 import { OpenBill, CourtReservation, CourtBill } from '../types';
@@ -317,6 +317,13 @@ const CourtSchedule: React.FC = () => {
   const [selectedReservation, setSelectedReservation] = useState<OpenBill | CourtReservation | CourtBill | null>(null);
   const [showReservationDetail, setShowReservationDetail] = useState(false);
 
+  // Función para cambiar fecha
+  const changeDate = (days: number) => {
+    const currentDate = new Date(selectedDate);
+    currentDate.setDate(currentDate.getDate() + days);
+    setSelectedDate(currentDate.toISOString().split('T')[0]);
+  };
+
   // Generar slots de tiempo (de 8:00 a 23:00)
   const timeSlots: TimeSlot[] = [];
   for (let hour = 8; hour <= 23; hour++) {
@@ -329,10 +336,16 @@ const CourtSchedule: React.FC = () => {
   useEffect(() => {
     refreshData();
     loadCourtOccupancy();
-  }, [selectedDate, reservations, courtBills]);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    loadCourtOccupancy();
+  }, [reservations, courtBills]);
 
   const loadCourtOccupancy = async () => {
     try {
+      console.log('🔍 Cargando ocupación para fecha:', selectedDate);
+      
       // Cargar todas las fuentes de reservas
       const [openBills, allReservations, allCourtBills] = await Promise.all([
         getOpenBills(),
@@ -341,19 +354,33 @@ const CourtSchedule: React.FC = () => {
       ]);
       
       // Filtrar todas las reservas del día seleccionado
+      console.log('📅 Filtrando reservas para:', selectedDate);
+      
       const dayOpenBills = openBills.filter(bill => {
-        const billDate = new Date(bill.startDate || bill.createdAt).toISOString().split('T')[0];
-        return billDate === selectedDate;
+        const billDate = bill.startDate || bill.createdAt;
+        const normalizedDate = new Date(billDate).toISOString().split('T')[0];
+        console.log('OpenBill fecha:', billDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
+        return normalizedDate === selectedDate;
       });
       
       const dayReservations = allReservations.filter(reservation => {
-        const reservationDate = new Date(reservation.startDate || reservation.createdAt).toISOString().split('T')[0];
-        return reservationDate === selectedDate;
+        const reservationDate = reservation.startDate || reservation.createdAt;
+        const normalizedDate = new Date(reservationDate).toISOString().split('T')[0];
+        console.log('Reservation fecha:', reservationDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
+        return normalizedDate === selectedDate;
       });
       
       const dayCourtBills = allCourtBills.filter(bill => {
-        const billDate = new Date(bill.startDate || bill.createdAt).toISOString().split('T')[0];
-        return billDate === selectedDate;
+        const billDate = bill.startDate || bill.createdAt;
+        const normalizedDate = new Date(billDate).toISOString().split('T')[0];
+        console.log('CourtBill fecha:', billDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
+        return normalizedDate === selectedDate;
+      });
+
+      console.log('📊 Reservas encontradas:', {
+        openBills: dayOpenBills.length,
+        reservations: dayReservations.length,
+        courtBills: dayCourtBills.length
       });
 
       // Crear estructura de ocupación por cancha
@@ -369,8 +396,11 @@ const CourtSchedule: React.FC = () => {
         dayOpenBills
           .filter(bill => bill.courtId === court.id)
           .forEach(bill => {
-            const startHour = new Date(bill.startTime || bill.createdAt).getHours();
+            const startTime = bill.startTime || bill.createdAt;
+            const startHour = new Date(startTime).getHours();
             const endHour = bill.endTime ? new Date(bill.endTime).getHours() : new Date().getHours();
+            
+            console.log(`🏓 OpenBill en ${court.name}: ${startHour}:00 - ${endHour}:00`);
             
             // Marcar las horas ocupadas
             for (let hour = startHour; hour <= Math.min(endHour, 23); hour++) {
@@ -384,8 +414,11 @@ const CourtSchedule: React.FC = () => {
         dayReservations
           .filter(reservation => reservation.courtId === court.id)
           .forEach(reservation => {
-            const startHour = new Date(reservation.startTime || reservation.createdAt).getHours();
+            const startTime = reservation.startTime || reservation.createdAt;
+            const startHour = new Date(startTime).getHours();
             const endHour = reservation.endTime ? new Date(reservation.endTime).getHours() : startHour + 1;
+            
+            console.log(`🏓 Reservation en ${court.name}: ${startHour}:00 - ${endHour}:00`);
             
             // Marcar las horas ocupadas
             for (let hour = startHour; hour <= Math.min(endHour, 23); hour++) {
@@ -402,8 +435,11 @@ const CourtSchedule: React.FC = () => {
         dayCourtBills
           .filter(bill => bill.courtId === court.id)
           .forEach(bill => {
-            const startHour = new Date(bill.startTime || bill.createdAt).getHours();
+            const startTime = bill.startTime || bill.createdAt;
+            const startHour = new Date(startTime).getHours();
             const endHour = bill.endTime ? new Date(bill.endTime).getHours() : startHour + 1;
+            
+            console.log(`🏓 CourtBill en ${court.name}: ${startHour}:00 - ${endHour}:00`);
             
             // Marcar las horas ocupadas
             for (let hour = startHour; hour <= Math.min(endHour, 23); hour++) {
@@ -508,12 +544,30 @@ const CourtSchedule: React.FC = () => {
           </p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <div className="flex items-center space-x-2">
+            <div className="flex flex-col">
+              <button
+                onClick={() => changeDate(1)}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                title="Día siguiente"
+              >
+                <ChevronUp className="h-4 w-4 text-gray-600" />
+              </button>
+              <button
+                onClick={() => changeDate(-1)}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                title="Día anterior"
+              >
+                <ChevronDown className="h-4 w-4 text-gray-600" />
+              </button>
+            </div>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
       </div>
 
@@ -558,7 +612,8 @@ const CourtSchedule: React.FC = () => {
                 {new Date(selectedDate).toLocaleDateString('es-ES', { 
                   weekday: 'short', 
                   day: 'numeric', 
-                  month: 'short' 
+                  month: 'short',
+                  year: 'numeric'
                 })}
               </p>
             </div>
