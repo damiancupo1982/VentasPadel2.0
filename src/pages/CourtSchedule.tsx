@@ -323,6 +323,29 @@ const CourtSchedule: React.FC = () => {
     currentDate.setDate(currentDate.getDate() + days);
     setSelectedDate(currentDate.toISOString().split('T')[0]);
   };
+  
+  // Función para ir directamente a una fecha con reservas
+  const goToDateWithReservations = async () => {
+    try {
+      // Leer todas las reservas
+      const reservasFromLocalStorage = localStorage.getItem('reservas-canchas-v2');
+      if (reservasFromLocalStorage) {
+        const allReservations = JSON.parse(reservasFromLocalStorage);
+        if (allReservations.length > 0) {
+          // Tomar la fecha de la primera reserva
+          const firstReservation = allReservations[0];
+          const reservationDate = firstReservation.startDate || firstReservation.fecha || firstReservation.startTime || firstReservation.horarioInicio;
+          if (reservationDate) {
+            const normalizedDate = new Date(reservationDate).toISOString().split('T')[0];
+            setSelectedDate(normalizedDate);
+            console.log('🎯 Saltando a fecha con reservas:', normalizedDate);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error finding date with reservations:', error);
+    }
+  };
 
   // Generar slots de tiempo (de 8:00 a 23:00)
   const timeSlots: TimeSlot[] = [];
@@ -693,6 +716,13 @@ const CourtSchedule: React.FC = () => {
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <div className="flex items-center space-x-2">
+            <button
+              onClick={goToDateWithReservations}
+              className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+              title="Ir a fecha con reservas"
+            >
+              📅 Ver Reservas
+            </button>
             <div className="flex flex-col">
               <button
                 onClick={() => changeDate(1)}
@@ -720,6 +750,33 @@ const CourtSchedule: React.FC = () => {
       </div>
 
       {/* Estadísticas del día */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <Calendar className="h-5 w-5 text-yellow-600 mr-2" />
+            <div>
+              <p className="text-sm font-medium text-yellow-800">
+                Fecha actual: {new Date(selectedDate).toLocaleDateString('es-ES')}
+              </p>
+              <p className="text-xs text-yellow-700">
+                {stats.totalReservations === 0 
+                  ? 'No hay reservas para esta fecha. Usa las flechas o el botón "Ver Reservas" para navegar.'
+                  : `${stats.totalReservations} reservas encontradas para esta fecha`
+                }
+              </p>
+            </div>
+          </div>
+          {stats.totalReservations === 0 && (
+            <button
+              onClick={goToDateWithReservations}
+              className="px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm"
+            >
+              📅 Ir a Reservas Existentes
+            </button>
+          )}
+        </div>
+      </div>
+      
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500">
           <div className="flex items-center">
