@@ -171,6 +171,7 @@ const CourtBillModal: React.FC<CourtBillModalProps> = ({
       kioskItems: selectedKioskItems,
       paymentMethod,
       paymentAmounts: paymentMethod === 'combinado' ? paymentAmounts : undefined
+      paymentAmounts: paymentMethod === 'combinado' ? paymentAmounts : undefined
     });
   };
   
