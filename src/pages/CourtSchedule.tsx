@@ -346,6 +346,34 @@ const CourtSchedule: React.FC = () => {
     try {
       console.log('🔍 Cargando ocupación para fecha:', selectedDate);
       
+      // DEBUGGING: Verificar todas las claves en localStorage e IndexedDB
+      console.log('🗄️ Verificando almacenamiento local...');
+      
+      // Verificar localStorage
+      const localStorageKeys = Object.keys(localStorage);
+      console.log('📦 Claves en localStorage:', localStorageKeys);
+      
+      // Buscar claves relacionadas con reservas/canchas
+      const courtRelatedKeys = localStorageKeys.filter(key => 
+        key.includes('court') || 
+        key.includes('reserv') || 
+        key.includes('cancha') || 
+        key.includes('bill') ||
+        key.includes('villanueva')
+      );
+      console.log('🏓 Claves relacionadas con canchas:', courtRelatedKeys);
+      
+      // Mostrar contenido de cada clave relacionada
+      courtRelatedKeys.forEach(key => {
+        try {
+          const value = localStorage.getItem(key);
+          const parsed = value ? JSON.parse(value) : null;
+          console.log(`📋 ${key}:`, parsed);
+        } catch (e) {
+          console.log(`❌ Error parseando ${key}:`, e);
+        }
+      });
+      
       // Cargar todas las fuentes de reservas
       const [openBills, allReservations, allCourtBills] = await Promise.all([
         getOpenBills(),
