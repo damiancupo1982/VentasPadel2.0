@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, User, MapPin, Eye, X, Phone, DollarSign } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { getOpenBills } from '../utils/db';
-import { OpenBill } from '../types';
+import { getOpenBills, getReservations, getCourtBills } from '../utils/db';
+import { OpenBill, CourtReservation, CourtBill } from '../types';
 
 interface TimeSlot {
   hour: number;
@@ -13,14 +13,14 @@ interface CourtOccupancy {
   courtId: string;
   courtName: string;
   reservations: {
-    [hour: string]: OpenBill | null;
+    [hour: string]: OpenBill | CourtReservation | CourtBill | null;
   };
 }
 
 interface ReservationDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  reservation: OpenBill | null;
+  reservation: OpenBill | CourtReservation | CourtBill | null;
 }
 
 const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen, onClose, reservation }) => {
@@ -36,11 +36,81 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
   };
 
   const calculateCurrentTotal = () => {
-    const servicesTotal = reservation.services.reduce((sum, service) => sum + service.subtotal, 0);
-    const kioskTotal = reservation.kioskItems.reduce((sum, item) => sum + item.subtotal, 0);
-    return reservation.courtRate + servicesTotal + kioskTotal;
+    // Para OpenBill
+    if ('services' in reservation && 'kioskItems' in reservation) {
+      const servicesTotal = reservation.services.reduce((sum, service) => sum + service.subtotal, 0);
+      const kioskTotal = reservation.kioskItems.reduce((sum, item) => sum + item.subtotal, 0);
+      return reservation.courtRate + servicesTotal + kioskTotal;
+    }
+    
+    // Para CourtReservation o CourtBill
+    if ('total' in reservation) {
+      return reservation.total;
+    }
+    
+    // Para reservas simples
+    if ('turnRate' in reservation) {
+      return reservation.turnRate;
+    }
+    
+    return 0;
   };
 
+  const getReservationType = () => {
+    if ('services' in reservation) return 'open-bill';
+    if ('status' in reservation) return 'reservation';
+    if ('receiptNumber' in reservation) return 'completed-bill';
+    return 'unknown';
+  };
+
+  const getCustomerType = () => {
+    if ('customerType' in reservation) return reservation.customerType;
+    return 'guest'; // Por defecto
+  };
+
+  const getStartTime = () => {
+    if ('startTime' in reservation) return reservation.startTime;
+    return new Date().toISOString();
+  };
+
+  const getStartDate = () => {
+    if ('startDate' in reservation) return reservation.startDate;
+    return new Date().toISOString();
+  };
+
+  const getCustomerName = () => {
+    return reservation.customerName || 'Cliente';
+  };
+
+  const getLotNumber = () => {
+    return reservation.lotNumber || '0';
+  };
+
+  const getCourtName = () => {
+    if ('courtName' in reservation) return reservation.courtName;
+    return 'Cancha';
+  };
+
+  const getPlayers = () => {
+    if ('players' in reservation && reservation.players) return reservation.players;
+    return [];
+  };
+
+  const getServices = () => {
+    if ('services' in reservation && reservation.services) return reservation.services;
+    return [];
+  };
+
+  const getKioskItems = () => {
+    if ('kioskItems' in reservation && reservation.kioskItems) return reservation.kioskItems;
+    return [];
+  };
+
+  const getCourtRate = () => {
+    if ('courtRate' in reservation) return reservation.courtRate;
+    if ('turnRate' in reservation) return reservation.turnRate;
+    return 0;
+  };
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
@@ -51,10 +121,10 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
             <Calendar className="h-6 w-6 text-blue-600 mr-2" />
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
-                Reserva - {reservation.courtName}
+                Reserva - {getCourtName()}
               </h2>
               <p className="text-sm text-gray-600">
-                {reservation.customerName} • {reservation.customerType === 'member' ? 'Socio' : 'Invitado'}
+                {getCustomerName()} • {getCustomerType() === 'member' ? 'Socio' : 'Invitado'}
               </p>
             </div>
           </div>
@@ -77,14 +147,14 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Nombre:</span>
-                  <span className="font-medium">{reservation.customerName}</span>
+                  <span className="font-medium">{getCustomerName()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Tipo:</span>
                   <span className={`font-medium ${
-                    reservation.customerType === 'member' ? 'text-green-600' : 'text-blue-600'
+                    getCustomerType() === 'member' ? 'text-green-600' : 'text-blue-600'
                   }`}>
-                    {reservation.customerType === 'member' ? 'Socio' : 'Invitado'}
+                    {getCustomerType() === 'member' ? 'Socio' : 'Invitado'}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -92,7 +162,7 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
                     <MapPin className="h-4 w-4 mr-1" />
                     Lote:
                   </span>
-                  <span className="font-medium">{reservation.lotNumber}</span>
+                  <span className="font-medium">{getLotNumber()}</span>
                 </div>
               </div>
             </div>
@@ -106,7 +176,7 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
                 <div className="flex justify-between">
                   <span className="text-gray-600">Inicio:</span>
                   <span className="font-medium">
-                    {new Date(reservation.startTime).toLocaleTimeString('es-ES', { 
+                    {new Date(getStartTime()).toLocaleTimeString('es-ES', { 
                       hour: '2-digit', 
                       minute: '2-digit' 
                     })}
@@ -115,13 +185,13 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
                 <div className="flex justify-between">
                   <span className="text-gray-600">Fecha:</span>
                   <span className="font-medium">
-                    {new Date(reservation.startDate).toLocaleDateString('es-ES')}
+                    {new Date(getStartDate()).toLocaleDateString('es-ES')}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Tiempo Jugado:</span>
                   <span className="font-medium text-green-600">
-                    {getElapsedTime(reservation.startTime)}
+                    {getElapsedTime(getStartTime())}
                   </span>
                 </div>
               </div>
@@ -129,11 +199,11 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
           </div>
 
           {/* Jugadores */}
-          {reservation.players && reservation.players.length > 0 && (
+          {getPlayers().length > 0 && (
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-3">👥 Jugadores ({reservation.players.length})</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-3">👥 Jugadores ({getPlayers().length})</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {reservation.players.map((player, index) => (
+                {getPlayers().map((player, index) => (
                   <div key={index} className="bg-white p-3 rounded border">
                     <div className="flex items-center justify-between">
                       <div>
@@ -153,11 +223,11 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
           )}
 
           {/* Servicios Adicionales */}
-          {reservation.services && reservation.services.length > 0 && (
+          {getServices().length > 0 && (
             <div className="bg-yellow-50 rounded-lg p-4 mb-6">
               <h3 className="text-lg font-medium text-gray-900 mb-3">⚡ Servicios Adicionales</h3>
               <div className="space-y-2">
-                {reservation.services.map((service, index) => (
+                {getServices().map((service, index) => (
                   <div key={index} className="flex justify-between items-center p-2 bg-white rounded border">
                     <div>
                       <span className="font-medium">{service.service.name}</span>
@@ -173,11 +243,11 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
           )}
 
           {/* Items del Kiosco */}
-          {reservation.kioskItems && reservation.kioskItems.length > 0 && (
+          {getKioskItems().length > 0 && (
             <div className="bg-green-50 rounded-lg p-4 mb-6">
               <h3 className="text-lg font-medium text-gray-900 mb-3">🛒 Productos del Kiosco</h3>
               <div className="space-y-2">
-                {reservation.kioskItems.map((item, index) => (
+                {getKioskItems().map((item, index) => (
                   <div key={index} className="flex justify-between items-center p-2 bg-white rounded border">
                     <div>
                       <span className="font-medium">{item.product.name}</span>
@@ -201,21 +271,21 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-gray-600">Tarifa de Cancha:</span>
-                <span className="font-medium">${reservation.courtRate.toFixed(2)}</span>
+                <span className="font-medium">${getCourtRate().toFixed(2)}</span>
               </div>
-              {reservation.services.length > 0 && (
+              {getServices().length > 0 && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Servicios Adicionales:</span>
                   <span className="font-medium">
-                    ${reservation.services.reduce((sum, s) => sum + s.subtotal, 0).toFixed(2)}
+                    ${getServices().reduce((sum, s) => sum + s.subtotal, 0).toFixed(2)}
                   </span>
                 </div>
               )}
-              {reservation.kioskItems.length > 0 && (
+              {getKioskItems().length > 0 && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Productos del Kiosco:</span>
                   <span className="font-medium">
-                    ${reservation.kioskItems.reduce((sum, i) => sum + i.subtotal, 0).toFixed(2)}
+                    ${getKioskItems().reduce((sum, i) => sum + i.subtotal, 0).toFixed(2)}
                   </span>
                 </div>
               )}
@@ -241,10 +311,10 @@ const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({ isOpen,
 };
 
 const CourtSchedule: React.FC = () => {
-  const { courts, refreshData } = useStore();
+  const { courts, reservations, courtBills, refreshData } = useStore();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [courtOccupancy, setCourtOccupancy] = useState<CourtOccupancy[]>([]);
-  const [selectedReservation, setSelectedReservation] = useState<OpenBill | null>(null);
+  const [selectedReservation, setSelectedReservation] = useState<OpenBill | CourtReservation | CourtBill | null>(null);
   const [showReservationDetail, setShowReservationDetail] = useState(false);
 
   // Generar slots de tiempo (de 8:00 a 23:00)
@@ -259,38 +329,89 @@ const CourtSchedule: React.FC = () => {
   useEffect(() => {
     refreshData();
     loadCourtOccupancy();
-  }, [selectedDate]);
+  }, [selectedDate, reservations, courtBills]);
 
   const loadCourtOccupancy = async () => {
     try {
-      const openBills = await getOpenBills();
+      // Cargar todas las fuentes de reservas
+      const [openBills, allReservations, allCourtBills] = await Promise.all([
+        getOpenBills(),
+        getReservations(),
+        getCourtBills()
+      ]);
       
-      // Filtrar reservas del día seleccionado
-      const dayReservations = openBills.filter(bill => {
-        const billDate = new Date(bill.startDate).toISOString().split('T')[0];
+      // Filtrar todas las reservas del día seleccionado
+      const dayOpenBills = openBills.filter(bill => {
+        const billDate = new Date(bill.startDate || bill.createdAt).toISOString().split('T')[0];
+        return billDate === selectedDate;
+      });
+      
+      const dayReservations = allReservations.filter(reservation => {
+        const reservationDate = new Date(reservation.startDate || reservation.createdAt).toISOString().split('T')[0];
+        return reservationDate === selectedDate;
+      });
+      
+      const dayCourtBills = allCourtBills.filter(bill => {
+        const billDate = new Date(bill.startDate || bill.createdAt).toISOString().split('T')[0];
         return billDate === selectedDate;
       });
 
       // Crear estructura de ocupación por cancha
       const occupancy: CourtOccupancy[] = courts.map(court => {
-        const reservations: { [hour: string]: OpenBill | null } = {};
+        const reservations: { [hour: string]: OpenBill | CourtReservation | CourtBill | null } = {};
         
         // Inicializar todos los slots como vacíos
         timeSlots.forEach(slot => {
           reservations[slot.hour.toString()] = null;
         });
 
-        // Llenar con reservas existentes
-        dayReservations
+        // Llenar con facturas abiertas (OpenBills)
+        dayOpenBills
           .filter(bill => bill.courtId === court.id)
           .forEach(bill => {
-            const startHour = new Date(bill.startTime).getHours();
+            const startHour = new Date(bill.startTime || bill.createdAt).getHours();
             const endHour = bill.endTime ? new Date(bill.endTime).getHours() : new Date().getHours();
             
             // Marcar las horas ocupadas
             for (let hour = startHour; hour <= Math.min(endHour, 23); hour++) {
               if (hour >= 8) {
                 reservations[hour.toString()] = bill;
+              }
+            }
+          });
+        
+        // Llenar con reservas normales (CourtReservation)
+        dayReservations
+          .filter(reservation => reservation.courtId === court.id)
+          .forEach(reservation => {
+            const startHour = new Date(reservation.startTime || reservation.createdAt).getHours();
+            const endHour = reservation.endTime ? new Date(reservation.endTime).getHours() : startHour + 1;
+            
+            // Marcar las horas ocupadas
+            for (let hour = startHour; hour <= Math.min(endHour, 23); hour++) {
+              if (hour >= 8) {
+                // Solo ocupar si no hay ya una factura abierta
+                if (!reservations[hour.toString()]) {
+                  reservations[hour.toString()] = reservation;
+                }
+              }
+            }
+          });
+        
+        // Llenar con facturas completadas (CourtBill)
+        dayCourtBills
+          .filter(bill => bill.courtId === court.id)
+          .forEach(bill => {
+            const startHour = new Date(bill.startTime || bill.createdAt).getHours();
+            const endHour = bill.endTime ? new Date(bill.endTime).getHours() : startHour + 1;
+            
+            // Marcar las horas ocupadas
+            for (let hour = startHour; hour <= Math.min(endHour, 23); hour++) {
+              if (hour >= 8) {
+                // Solo ocupar si no hay ya una reserva activa
+                if (!reservations[hour.toString()]) {
+                  reservations[hour.toString()] = bill;
+                }
               }
             }
           });
@@ -308,19 +429,22 @@ const CourtSchedule: React.FC = () => {
     }
   };
 
-  const handleSlotClick = (reservation: OpenBill) => {
+  const handleSlotClick = (reservation: OpenBill | CourtReservation | CourtBill) => {
     setSelectedReservation(reservation);
     setShowReservationDetail(true);
   };
 
-  const getSlotColor = (reservation: OpenBill | null) => {
+  const getSlotColor = (reservation: OpenBill | CourtReservation | CourtBill | null) => {
     if (!reservation) return 'bg-gray-50 border-gray-200 hover:bg-gray-100';
     
     const now = new Date();
-    const startTime = new Date(reservation.startTime);
+    const startTime = new Date(reservation.startTime || reservation.createdAt);
     const isActive = now >= startTime;
     
-    if (reservation.customerType === 'member') {
+    // Determinar tipo de cliente
+    const customerType = ('customerType' in reservation) ? reservation.customerType : 'guest';
+    
+    if (customerType === 'member') {
       return isActive 
         ? 'bg-green-200 border-green-400 hover:bg-green-300 cursor-pointer' 
         : 'bg-green-100 border-green-300 hover:bg-green-200 cursor-pointer';
@@ -331,8 +455,10 @@ const CourtSchedule: React.FC = () => {
     }
   };
 
-  const getSlotContent = (reservation: OpenBill | null) => {
+  const getSlotContent = (reservation: OpenBill | CourtReservation | CourtBill | null) => {
     if (!reservation) return null;
+    
+    const customerType = ('customerType' in reservation) ? reservation.customerType : 'guest';
     
     return (
       <div className="p-2 text-xs">
@@ -343,7 +469,7 @@ const CourtSchedule: React.FC = () => {
           Lote {reservation.lotNumber}
         </div>
         <div className="text-gray-500">
-          {reservation.customerType === 'member' ? '👥 Socio' : '👤 Invitado'}
+          {customerType === 'member' ? '👥 Socio' : '👤 Invitado'}
         </div>
       </div>
     );
@@ -355,7 +481,11 @@ const CourtSchedule: React.FC = () => {
     }, 0);
 
     const memberReservations = courtOccupancy.reduce((total, court) => {
-      return total + Object.values(court.reservations).filter(r => r?.customerType === 'member').length;
+      return total + Object.values(court.reservations).filter(r => {
+        if (!r) return false;
+        const customerType = ('customerType' in r) ? r.customerType : 'guest';
+        return customerType === 'member';
+      }).length;
     }, 0);
 
     const guestReservations = totalReservations - memberReservations;
