@@ -353,25 +353,35 @@ const CourtSchedule: React.FC = () => {
         getCourtBills()
       ]);
       
+      // Debug: mostrar estructura de datos
+      console.log('🔍 Datos cargados:', {
+        openBills: openBills.map(b => ({ id: b.reservationId, courtId: b.courtId, startDate: b.startDate, startTime: b.startTime })),
+        reservations: allReservations.map(r => ({ id: r.id, courtId: r.courtId, startDate: r.startDate, startTime: r.startTime })),
+        courtBills: allCourtBills.map(b => ({ id: b.id, courtId: b.courtId, startDate: b.startDate, startTime: b.startTime }))
+      });
+      
       // Filtrar todas las reservas del día seleccionado
       console.log('📅 Filtrando reservas para:', selectedDate);
       
       const dayOpenBills = openBills.filter(bill => {
-        const billDate = bill.startDate || bill.createdAt;
+        // Probar múltiples campos de fecha
+        const billDate = bill.startDate || bill.startTime || bill.createdAt;
         const normalizedDate = new Date(billDate).toISOString().split('T')[0];
         console.log('OpenBill fecha:', billDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
         return normalizedDate === selectedDate;
       });
       
       const dayReservations = allReservations.filter(reservation => {
-        const reservationDate = reservation.startDate || reservation.createdAt;
+        // Probar múltiples campos de fecha
+        const reservationDate = reservation.startDate || reservation.startTime || reservation.createdAt;
         const normalizedDate = new Date(reservationDate).toISOString().split('T')[0];
         console.log('Reservation fecha:', reservationDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
         return normalizedDate === selectedDate;
       });
       
       const dayCourtBills = allCourtBills.filter(bill => {
-        const billDate = bill.startDate || bill.createdAt;
+        // Probar múltiples campos de fecha
+        const billDate = bill.startDate || bill.startTime || bill.createdAt;
         const normalizedDate = new Date(billDate).toISOString().split('T')[0];
         console.log('CourtBill fecha:', billDate, '-> normalizada:', normalizedDate, '== selectedDate:', selectedDate, '?', normalizedDate === selectedDate);
         return normalizedDate === selectedDate;
@@ -383,6 +393,12 @@ const CourtSchedule: React.FC = () => {
         courtBills: dayCourtBills.length
       });
 
+      // Debug: mostrar las reservas filtradas
+      console.log('📋 Reservas del día filtradas:', {
+        openBills: dayOpenBills,
+        reservations: dayReservations,
+        courtBills: dayCourtBills
+      });
       // Crear estructura de ocupación por cancha
       const occupancy: CourtOccupancy[] = courts.map(court => {
         const reservations: { [hour: string]: OpenBill | CourtReservation | CourtBill | null } = {};
@@ -396,9 +412,9 @@ const CourtSchedule: React.FC = () => {
         dayOpenBills
           .filter(bill => bill.courtId === court.id)
           .forEach(bill => {
-            const startTime = bill.startTime || bill.createdAt;
+            const startTime = bill.startTime || bill.startDate || bill.createdAt;
             const startHour = new Date(startTime).getHours();
-            const endHour = bill.endTime ? new Date(bill.endTime).getHours() : new Date().getHours();
+            const endHour = bill.endTime ? new Date(bill.endTime).getHours() : startHour + 2; // Default 2 horas
             
             console.log(`🏓 OpenBill en ${court.name}: ${startHour}:00 - ${endHour}:00`);
             
@@ -414,7 +430,7 @@ const CourtSchedule: React.FC = () => {
         dayReservations
           .filter(reservation => reservation.courtId === court.id)
           .forEach(reservation => {
-            const startTime = reservation.startTime || reservation.createdAt;
+            const startTime = reservation.startTime || reservation.startDate || reservation.createdAt;
             const startHour = new Date(startTime).getHours();
             const endHour = reservation.endTime ? new Date(reservation.endTime).getHours() : startHour + 1;
             
@@ -435,9 +451,9 @@ const CourtSchedule: React.FC = () => {
         dayCourtBills
           .filter(bill => bill.courtId === court.id)
           .forEach(bill => {
-            const startTime = bill.startTime || bill.createdAt;
+            const startTime = bill.startTime || bill.startDate || bill.createdAt;
             const startHour = new Date(startTime).getHours();
-            const endHour = bill.endTime ? new Date(bill.endTime).getHours() : startHour + 1;
+            const endHour = bill.endTime ? new Date(bill.endTime).getHours() : startHour + 2; // Default 2 horas
             
             console.log(`🏓 CourtBill en ${court.name}: ${startHour}:00 - ${endHour}:00`);
             
@@ -452,6 +468,11 @@ const CourtSchedule: React.FC = () => {
             }
           });
 
+        console.log(`📋 Ocupación final para ${court.name}:`, 
+          Object.entries(reservations)
+            .filter(([hour, res]) => res !== null)
+            .map(([hour, res]) => ({ hour, cliente: res?.customerName }))
+        );
         return {
           courtId: court.id,
           courtName: court.name,
