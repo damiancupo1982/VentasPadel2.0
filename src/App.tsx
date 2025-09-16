@@ -13,7 +13,6 @@ import Stock from './pages/Stock';
 import Movements from './pages/Movements';
 import Transactions from './pages/Transactions';
 import Carnets from './pages/Carnets';
-import CourtSchedule from './pages/CourtSchedule';
 
 function App() {
   const { refreshData, isAdmin } = useStore();
@@ -58,7 +57,6 @@ function App() {
             <Route path="stock" element={isAdmin ? <Stock /> : <Navigate to="/" replace />} />
             <Route path="movements" element={isAdmin ? <Movements /> : <Navigate to="/" replace />} />
             <Route path="transactions" element={isAdmin ? <Transactions /> : <Navigate to="/" replace />} />
-            <Route path="agenda" element={<CourtSchedule />} />
           </Route>
         </Routes>
       </ErrorBoundary>
