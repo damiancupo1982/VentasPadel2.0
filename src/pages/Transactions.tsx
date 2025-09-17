@@ -56,7 +56,7 @@ const Transactions: React.FC = () => {
   const [showTransactionDetail, setShowTransactionDetail] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<HistoricalTransaction | null>(null);
 
-  // Estados separados para los filtros (no aplicados automáticamente)
+  // Estados temporales (UI) para filtros
   const [tempSearchTerm, setTempSearchTerm] = useState('');
   const [tempDateFilter, setTempDateFilter] = useState('all');
   const [tempCustomDateStart, setTempCustomDateStart] = useState('');
@@ -64,18 +64,16 @@ const Transactions: React.FC = () => {
   const [tempTypeFilter, setTempTypeFilter] = useState('');
   const [tempPaymentFilter, setTempPaymentFilter] = useState('');
 
-  // Cargar transacciones históricas
   useEffect(() => {
     loadHistoricalTransactions();
     refreshData();
   }, []);
 
-  // Actualizar transacciones cuando cambien las ventas o facturas
   useEffect(() => {
     updateHistoricalTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sales, courtBills]);
 
-  // Aplicar filtros solo cuando se carguen las transacciones inicialmente
   useEffect(() => {
     setFilteredTransactions(transactions);
   }, [transactions]);
@@ -106,40 +104,36 @@ const Transactions: React.FC = () => {
     const existingIds = new Set(transactions.map(t => t.id));
     const newTransactions: HistoricalTransaction[] = [];
 
-    // Procesar ventas del kiosco
+    // 1) Ventas del kiosco
     sales.forEach(sale => {
       if (!existingIds.has(sale.id)) {
-        const saleDate = new Date(sale.createdAt);
-        const transaction: HistoricalTransaction = {
+        const d = new Date(sale.createdAt);
+        newTransactions.push({
           id: sale.id,
-          fecha: saleDate.toLocaleDateString('es-ES'),
-          hora: saleDate.toLocaleTimeString('es-ES'),
-          tipo: sale.total < 0 ? 'retiro' : 
-                sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk',
+          fecha: d.toLocaleDateString('es-ES'),
+          hora: d.toLocaleTimeString('es-ES'),
+          tipo: sale.total < 0 ? 'retiro' : (sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk'),
           recibo: sale.receiptNumber,
           cliente: sale.customerName || 'Cliente general',
           lote: sale.lotNumber || '0',
-          origen: sale.total < 0 ? 'Retiro de Caja' : 
-                  sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' :
-                  sale.courtId || 'Kiosco',
+          origen: sale.total < 0 ? 'Retiro de Caja' : (sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' : (sale.courtId || 'Kiosco')),
           total: sale.total,
           metodo: sale.paymentMethod,
-          paymentBreakdown: sale.paymentBreakdown, // ✅ FIX: conservar el desglose
+          paymentBreakdown: sale.paymentBreakdown,
           items: sale.items,
           createdAt: sale.createdAt
-        };
-        newTransactions.push(transaction);
+        });
       }
     });
 
-    // Procesar facturas de canchas
+    // 2) Facturas de canchas
     courtBills.forEach(bill => {
       if (!existingIds.has(bill.id)) {
-        const billDate = new Date(bill.createdAt);
-        const transaction: HistoricalTransaction = {
+        const d = new Date(bill.createdAt);
+        newTransactions.push({
           id: bill.id,
-          fecha: billDate.toLocaleDateString('es-ES'),
-          hora: billDate.toLocaleTimeString('es-ES'),
+          fecha: d.toLocaleDateString('es-ES'),
+          hora: d.toLocaleTimeString('es-ES'),
           tipo: 'court',
           recibo: bill.receiptNumber,
           cliente: bill.customerName,
@@ -150,25 +144,24 @@ const Transactions: React.FC = () => {
           paymentBreakdown: bill.paymentBreakdown,
           items: [...(bill.kioskItems || []), ...(bill.services || [])],
           createdAt: bill.createdAt
-        };
-        newTransactions.push(transaction);
+        });
       }
     });
 
-    // Procesar retiros de todos los turnos
+    // 3) Retiros y gastos guardados en AdminTurns (históricos)
     const allTurns = JSON.parse(localStorage.getItem('villanueva-admin-turns') || '[]');
     allTurns.forEach((turn: any) => {
       if (turn.transactions) {
         turn.transactions.forEach((withdrawal: any) => {
           if (!existingIds.has(withdrawal.id)) {
-            const withdrawalDate = new Date(withdrawal.createdAt);
-            const transaction: HistoricalTransaction = {
+            const d = new Date(withdrawal.createdAt);
+            newTransactions.push({
               id: withdrawal.id,
-              fecha: withdrawalDate.toLocaleDateString('es-ES'),
-              hora: withdrawalDate.toLocaleTimeString('es-ES'),
+              fecha: d.toLocaleDateString('es-ES'),
+              hora: d.toLocaleTimeString('es-ES'),
               tipo: 'retiro',
               recibo: withdrawal.receiptNumber,
-              withdrawalId: withdrawal.withdrawalId || `RETIRO-${withdrawal.id.slice(-4)}`,
+              withdrawalId: withdrawal.withdrawalId || `RETIRO-${String(withdrawal.id).slice(-4)}`,
               cliente: `Retiro - ${withdrawal.adminName}`,
               lote: '0',
               origen: 'Retiro de Caja',
@@ -178,21 +171,18 @@ const Transactions: React.FC = () => {
               adminName: withdrawal.adminName,
               notes: withdrawal.notes,
               createdAt: withdrawal.createdAt
-            };
-            newTransactions.push(transaction);
+            });
           }
         });
       }
-      
-      // Procesar gastos de todos los turnos
       if (turn.expenses) {
         turn.expenses.forEach((expense: any) => {
           if (!existingIds.has(expense.id)) {
-            const expenseDate = new Date(expense.createdAt);
-            const transaction: HistoricalTransaction = {
+            const d = new Date(expense.createdAt);
+            newTransactions.push({
               id: expense.id,
-              fecha: expenseDate.toLocaleDateString('es-ES'),
-              hora: expenseDate.toLocaleTimeString('es-ES'),
+              fecha: d.toLocaleDateString('es-ES'),
+              hora: d.toLocaleTimeString('es-ES'),
               tipo: 'gasto',
               recibo: expense.receiptNumber,
               cliente: `Gasto - ${expense.adminName}`,
@@ -204,31 +194,66 @@ const Transactions: React.FC = () => {
               adminName: expense.adminName,
               notes: expense.detail,
               createdAt: expense.createdAt
-            };
-            newTransactions.push(transaction);
+            });
           }
         });
       }
     });
 
+    // 4) **NUEVO** — Retiros locales (villanueva-transactions) creados con withdrawCash()
+    try {
+      const localTx: any[] = JSON.parse(localStorage.getItem('villanueva-transactions') || '[]');
+      localTx
+        .filter(tx => tx && tx.kind === 'retiro')
+        .forEach(tx => {
+          if (!existingIds.has(tx.id)) {
+            const d = new Date(tx.createdAt);
+            newTransactions.push({
+              id: tx.id,
+              fecha: d.toLocaleDateString('es-ES'),
+              hora: d.toLocaleTimeString('es-ES'),
+              tipo: 'retiro',
+              recibo: tx.receiptNumber,
+              withdrawalId: `RETIRO-${String(tx.id).slice(-4)}`,
+              cliente: `Retiro - ${tx.adminName || 'Admin'}`,
+              lote: '0',
+              origen: 'Retiro de Caja',
+              total: tx.total, // ya negativo
+              metodo: 'efectivo',
+              items: [],
+              adminName: tx.adminName,
+              notes: tx.notes,
+              paymentBreakdown: tx.paymentBreakdown
+                ? {
+                    efectivo: tx.paymentBreakdown.efectivo || 0,
+                    transferencia: tx.paymentBreakdown.transferencia || 0,
+                    expensa: tx.paymentBreakdown.expensa || 0
+                  }
+                : { efectivo: tx.total, transferencia: 0, expensa: 0 },
+              createdAt: tx.createdAt
+            });
+          }
+        });
+    } catch (e) {
+      console.warn('No se pudieron leer retiros locales:', e);
+    }
+
     if (newTransactions.length > 0) {
-      const updatedTransactions = [...transactions, ...newTransactions]
+      const updated = [...transactions, ...newTransactions]
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      saveHistoricalTransactions(updatedTransactions);
+      saveHistoricalTransactions(updated);
     }
   };
 
-  // Función para aplicar filtros manualmente
+  // Aplicar filtros manualmente
   const handleApplyFilters = () => {
-    // Actualizar los estados de filtros activos
     setSearchTerm(tempSearchTerm);
     setDateFilter(tempDateFilter);
     setCustomDateStart(tempCustomDateStart);
     setCustomDateEnd(tempCustomDateEnd);
     setTypeFilter(tempTypeFilter);
     setPaymentFilter(tempPaymentFilter);
-    
-    // Aplicar filtros con los valores temporales
+
     applyFiltersWithValues(
       tempSearchTerm,
       tempDateFilter,
@@ -239,7 +264,6 @@ const Transactions: React.FC = () => {
     );
   };
 
-  // Función para limpiar filtros
   const handleClearFilters = () => {
     setTempSearchTerm('');
     setTempDateFilter('all');
@@ -247,14 +271,14 @@ const Transactions: React.FC = () => {
     setTempCustomDateEnd('');
     setTempTypeFilter('');
     setTempPaymentFilter('');
-    
+
     setSearchTerm('');
     setDateFilter('all');
     setCustomDateStart('');
     setCustomDateEnd('');
     setTypeFilter('');
     setPaymentFilter('');
-    
+
     setFilteredTransactions(transactions);
   };
 
@@ -268,7 +292,6 @@ const Transactions: React.FC = () => {
   ) => {
     let filtered = [...transactions];
 
-    // Filtro de búsqueda
     if (searchValue) {
       const term = searchValue.toLowerCase();
       filtered = filtered.filter(t => 
@@ -279,50 +302,38 @@ const Transactions: React.FC = () => {
       );
     }
 
-    // Filtro de fecha
     if (dateValue !== 'all') {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
       switch (dateValue) {
-        case 'today': {
-          filtered = filtered.filter(t => {
-            const transactionDate = new Date(t.createdAt);
-            return transactionDate >= today;
-          });
+        case 'today':
+          filtered = filtered.filter(t => new Date(t.createdAt) >= today);
           break;
-        }
         case 'yesterday': {
-          const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+          const y = new Date(today.getTime() - 24 * 60 * 60 * 1000);
           filtered = filtered.filter(t => {
-            const transactionDate = new Date(t.createdAt);
-            return transactionDate >= yesterday && transactionDate < today;
+            const d = new Date(t.createdAt);
+            return d >= y && d < today;
           });
           break;
         }
         case 'week': {
-          const weekStart = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-          filtered = filtered.filter(t => {
-            const transactionDate = new Date(t.createdAt);
-            return transactionDate >= weekStart;
-          });
+          const start = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+          filtered = filtered.filter(t => new Date(t.createdAt) >= start);
           break;
         }
         case 'month': {
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          filtered = filtered.filter(t => {
-            const transactionDate = new Date(t.createdAt);
-            return transactionDate >= monthStart;
-          });
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          filtered = filtered.filter(t => new Date(t.createdAt) >= start);
           break;
         }
         case 'custom': {
           if (startDate && endDate) {
-            const startDateObj = new Date(startDate);
-            const endDateObj = new Date(endDate + 'T23:59:59');
+            const s = new Date(startDate);
+            const e = new Date(endDate + 'T23:59:59');
             filtered = filtered.filter(t => {
-              const transactionDate = new Date(t.createdAt);
-              return transactionDate >= startDateObj && transactionDate <= endDateObj;
+              const d = new Date(t.createdAt);
+              return d >= s && d <= e;
             });
           }
           break;
@@ -330,15 +341,8 @@ const Transactions: React.FC = () => {
       }
     }
 
-    // Filtro de tipo
-    if (typeValue) {
-      filtered = filtered.filter(t => t.tipo === typeValue);
-    }
-
-    // Filtro de método de pago
-    if (paymentValue) {
-      filtered = filtered.filter(t => t.metodo === paymentValue);
-    }
+    if (typeValue) filtered = filtered.filter(t => t.tipo === typeValue);
+    if (paymentValue) filtered = filtered.filter(t => t.metodo === paymentValue);
 
     setFilteredTransactions(filtered);
   };
@@ -367,49 +371,35 @@ const Transactions: React.FC = () => {
     ];
     
     const rows = filteredTransactions.map(transaction => {
-      // Calcular montos por método de pago
-      let efectivoAmount = 0;
-      let transferenciaAmount = 0;
-      let expensaAmount = 0;
-      
+      let efectivoAmount = 0, transferenciaAmount = 0, expensaAmount = 0;
       if (transaction.paymentBreakdown) {
-        // Pago combinado con desglose
         efectivoAmount = transaction.paymentBreakdown.efectivo || 0;
         transferenciaAmount = transaction.paymentBreakdown.transferencia || 0;
         expensaAmount = transaction.paymentBreakdown.expensa || 0;
       } else {
-        // Pago simple: asignar todo el monto al método correspondiente
-        if (transaction.metodo === 'efectivo') {
-          efectivoAmount = transaction.total;
-        } else if (transaction.metodo === 'transferencia') {
-          transferenciaAmount = transaction.total;
-        } else if (transaction.metodo === 'expensa') {
-          expensaAmount = transaction.total;
-        }
+        if (transaction.metodo === 'efectivo') efectivoAmount = transaction.total;
+        if (transaction.metodo === 'transferencia') transferenciaAmount = transaction.total;
+        if (transaction.metodo === 'expensa') expensaAmount = transaction.total;
       }
-      
-      const paymentMethodText = transaction.metodo === 'combinado' ? 
-        (() => {
-          const methods: string[] = [];
-          if (efectivoAmount > 0) methods.push('Efectivo');
-          if (transferenciaAmount > 0) methods.push('Transferencia');
-          if (expensaAmount > 0) methods.push('Expensa');
-          return methods.join(' + ');
-        })()
+      const paymentMethodText = transaction.metodo === 'combinado'
+        ? ['efectivo','transferencia','expensa']
+            .filter(k => ((transaction.paymentBreakdown as any)?.[k] || 0) !== 0)
+            .map(k => k === 'efectivo' ? 'Efectivo' : k === 'transferencia' ? 'Transferencia' : 'Expensa')
+            .join(' + ')
         : transaction.metodo;
-      
+
       return [
-      transaction.fecha,
-      transaction.hora,
-      getTypeLabel(transaction.tipo),
-      transaction.recibo,
-      transaction.withdrawalId || '-',
-      transaction.cliente,
-      transaction.lote || '-',
-      transaction.origen,
-      transaction.total,
+        transaction.fecha,
+        transaction.hora,
+        getTypeLabel(transaction.tipo),
+        transaction.recibo,
+        transaction.withdrawalId || '-',
+        transaction.cliente,
+        transaction.lote || '-',
+        transaction.origen,
+        transaction.total,
         paymentMethodText,
-      transaction.notes || '-',
+        transaction.notes || '-',
         efectivoAmount,
         transferenciaAmount,
         expensaAmount
@@ -461,7 +451,7 @@ const Transactions: React.FC = () => {
     const rows: string[][] = [];
     
     filteredTransactions.forEach(transaction => {
-      const baseTransactionData = [
+      const base = [
         transaction.fecha,
         transaction.hora,
         getTypeLabel(transaction.tipo),
@@ -471,78 +461,60 @@ const Transactions: React.FC = () => {
         transaction.lote || '-',
         transaction.origen
       ];
-      
-      const paymentMethodText = transaction.metodo === 'combinado' ? 
-        (() => {
-          const methods: string[] = [];
-          if (transaction.paymentBreakdown?.efectivo > 0) methods.push('Efectivo');
-          if (transaction.paymentBreakdown?.transferencia > 0) methods.push('Transferencia');
-          if (transaction.paymentBreakdown?.expensa > 0) methods.push('Expensa');
-          return methods.join(' + ');
-        })()
+
+      const pmText = transaction.metodo === 'combinado'
+        ? ['efectivo','transferencia','expensa']
+            .filter(k => ((transaction.paymentBreakdown as any)?.[k] || 0) !== 0)
+            .map(k => k === 'efectivo' ? 'Efectivo' : k === 'transferencia' ? 'Transferencia' : 'Expensa')
+            .join(' + ')
         : transaction.metodo;
-      
-      // Calcular montos por método de pago
-      let efectivoAmount = 0;
-      let transferenciaAmount = 0;
-      let expensaAmount = 0;
-      
+
+      let ef = 0, tr = 0, ex = 0;
       if (transaction.paymentBreakdown) {
-        // Pago combinado con desglose
-        efectivoAmount = transaction.paymentBreakdown.efectivo || 0;
-        transferenciaAmount = transaction.paymentBreakdown.transferencia || 0;
-        expensaAmount = transaction.paymentBreakdown.expensa || 0;
+        ef = transaction.paymentBreakdown.efectivo || 0;
+        tr = transaction.paymentBreakdown.transferencia || 0;
+        ex = transaction.paymentBreakdown.expensa || 0;
       } else {
-        // Pago simple: asignar todo el monto al método correspondiente
-        if (transaction.metodo === 'efectivo') {
-          efectivoAmount = transaction.total;
-        } else if (transaction.metodo === 'transferencia') {
-          transferenciaAmount = transaction.total;
-        } else if (transaction.metodo === 'expensa') {
-          expensaAmount = transaction.total;
-        }
+        if (transaction.metodo === 'efectivo') ef = transaction.total;
+        if (transaction.metodo === 'transferencia') tr = transaction.total;
+        if (transaction.metodo === 'expensa') ex = transaction.total;
       }
-      
-      // Si la transacción tiene items, crear un renglón por cada item
+
       if (transaction.items && transaction.items.length > 0) {
-        transaction.items.forEach((item, itemIndex) => {
-          const itemName = item.product?.name || item.service?.name || item.nombre || 'Item desconocido';
-          const itemQuantity = item.quantity || item.cantidad || 1;
-          const itemPrice = item.product?.price || item.service?.price || item.precio || 0;
-          const itemSubtotal = item.subtotal || (itemPrice * itemQuantity);
-          
-          // Solo en el primer item de cada transacción incluir totales y métodos de pago
-          // En los demás items dejar esas columnas vacías
-          const isFirstItem = itemIndex === 0;
-          
+        transaction.items.forEach((item, idx) => {
+          const name = item.product?.name || item.service?.name || item.nombre || 'Item desconocido';
+          const qty = item.quantity || item.cantidad || 1;
+          const price = item.product?.price || item.service?.price || item.precio || 0;
+          const sub = item.subtotal || (price * qty);
+          const first = idx === 0;
+
           rows.push([
-            ...baseTransactionData,
-            itemName,
-            itemQuantity.toString(),
-            itemPrice.toString(),
-            itemSubtotal.toString(),
-            isFirstItem ? transaction.total.toString() : '', // Total solo en primer item
-            isFirstItem ? paymentMethodText : '', // Método solo en primer item
-            isFirstItem ? efectivoAmount.toString() : '', // Efectivo solo en primer item
-            isFirstItem ? transferenciaAmount.toString() : '', // Transferencia solo en primer item
-            isFirstItem ? expensaAmount.toString() : '', // Expensa solo en primer item
-            isFirstItem ? (transaction.notes || '') : '' // Notas solo en primer item
+            ...base,
+            name,
+            String(qty),
+            String(price),
+            String(sub),
+            first ? String(transaction.total) : '',
+            first ? pmText : '',
+            first ? String(ef) : '',
+            first ? String(tr) : '',
+            first ? String(ex) : '',
+            first ? (transaction.notes || '') : ''
           ]);
         });
       } else {
-        // Si no tiene items, crear un renglón con la transacción completa
         rows.push([
-          ...baseTransactionData,
-          'Sin items detallados', // Item
-          '1', // Cantidad
-          transaction.total.toString(), // Precio unitario = total
-          transaction.total.toString(), // Subtotal = total
-          transaction.total.toString(), // Total transacción
-          paymentMethodText, // Método
-          efectivoAmount.toString(), // Efectivo
-          transferenciaAmount.toString(), // Transferencia
-          expensaAmount.toString(), // Expensa
-          transaction.notes || '' // Notas
+          ...base,
+          'Sin items detallados',
+          '1',
+          String(transaction.total),
+          String(transaction.total),
+          String(transaction.total),
+          pmText,
+          String(ef),
+          String(tr),
+          String(ex),
+          transaction.notes || ''
         ]);
       }
     });
@@ -562,7 +534,6 @@ const Transactions: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Función para preparar datos de transacción para el modal
   const prepareTransactionForModal = (transaction: HistoricalTransaction): HistoricalTransaction => {
     const items = (transaction.items || []).map(item => ({
       id: item.id || `item-${Date.now()}-${Math.random()}`,
@@ -573,26 +544,17 @@ const Transactions: React.FC = () => {
       descuento: item.descuento || 0,
       categoria: item.product?.category || item.service?.category || item.categoria || 'Sin categoría'
     }));
-
-    // Devolvemos la transacción original, pero con los items normalizados
-    return {
-      ...transaction,
-      items
-    };
+    return { ...transaction, items };
   };
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'kiosk':
-        return <Package className="h-4 w-4 text-green-600" />;
-      case 'court':
-        return <Calendar className="h-4 w-4 text-blue-600" />;
-      case 'retiro':
-        return <Minus className="h-4 w-4 text-red-600" />;
-      case 'caja-inicial':
-        return <Plus className="h-4 w-4 text-yellow-600" />;
-      default:
-        return <Receipt className="h-4 w-4 text-gray-600" />;
+      case 'kiosk': return <Package className="h-4 w-4 text-green-600" />;
+      case 'court': return <Calendar className="h-4 w-4 text-blue-600" />;
+      case 'retiro': return <Minus className="h-4 w-4 text-red-600" />;
+      case 'gasto': return <Minus className="h-4 w-4 text-orange-600" />;
+      case 'caja-inicial': return <Plus className="h-4 w-4 text-yellow-600" />;
+      default: return <Receipt className="h-4 w-4 text-gray-600" />;
     }
   };
 
@@ -623,36 +585,30 @@ const Transactions: React.FC = () => {
       case 'efectivo': return <Banknote className="h-4 w-4 text-green-600" />;
       case 'transferencia': return <CreditCard className="h-4 w-4 text-blue-600" />;
       case 'expensa': return <FileText className="h-4 w-4 text-purple-600" />;
-      case 'combinado': return <div className="flex space-x-1">
-        <Banknote className="h-3 w-3 text-green-600" />
-        <CreditCard className="h-3 w-3 text-blue-600" />
-        <FileText className="h-3 w-3 text-purple-600" />
-      </div>;
+      case 'combinado': return (
+        <div className="flex space-x-1">
+          <Banknote className="h-3 w-3 text-green-600" />
+          <CreditCard className="h-3 w-3 text-blue-600" />
+          <FileText className="h-3 w-3 text-purple-600" />
+        </div>
+      );
       default: return <DollarSign className="h-4 w-4 text-gray-600" />;
     }
   };
 
-  // Calcular totales
-  const totales = filteredTransactions.reduce((totals, transaction) => {
-    totals.general += transaction.total;
-    
-    if (transaction.metodo === 'combinado' && transaction.paymentBreakdown) {
-      // Pago combinado: sumar cada método por separado
-      totals.efectivo += transaction.paymentBreakdown.efectivo || 0;
-      totals.transferencia += transaction.paymentBreakdown.transferencia || 0;
-      totals.expensa += transaction.paymentBreakdown.expensa || 0;
+  // Totales de lo filtrado
+  const totales = filteredTransactions.reduce((acc, t) => {
+    acc.general += t.total;
+    if (t.metodo === 'combinado' && t.paymentBreakdown) {
+      acc.efectivo += t.paymentBreakdown.efectivo || 0;
+      acc.transferencia += t.paymentBreakdown.transferencia || 0;
+      acc.expensa += t.paymentBreakdown.expensa || 0;
     } else {
-      // Pago simple: sumar al método correspondiente
-      if (transaction.metodo === 'efectivo') {
-        totals.efectivo += transaction.total;
-      } else if (transaction.metodo === 'transferencia') {
-        totals.transferencia += transaction.total;
-      } else if (transaction.metodo === 'expensa') {
-        totals.expensa += transaction.total;
-      }
+      if (t.metodo === 'efectivo') acc.efectivo += t.total;
+      if (t.metodo === 'transferencia') acc.transferencia += t.total;
+      if (t.metodo === 'expensa') acc.expensa += t.total;
     }
-    
-    return totals;
+    return acc;
   }, { general: 0, efectivo: 0, transferencia: 0, expensa: 0 });
 
   return (
@@ -789,7 +745,6 @@ const Transactions: React.FC = () => {
           </div>
         </div>
 
-        {/* Filtros de fecha personalizada */}
         {tempDateFilter === 'custom' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div>
@@ -817,7 +772,6 @@ const Transactions: React.FC = () => {
           </div>
         )}
         
-        {/* Botones de acción y contador de resultados */}
         <div className="flex items-center justify-between mt-4">
           <div className="flex items-center space-x-4">
             <button
@@ -834,126 +788,81 @@ const Transactions: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabla de transacciones */}
+      {/* Tabla */}
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Fecha/Hora
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tipo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Recibo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  ID Retiro
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cliente
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Lote
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Origen
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Método
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Notas/Detalle
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Acciones
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha/Hora</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recibo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Retiro</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lote</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Origen</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Método</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notas/Detalle</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredTransactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-gray-50">
+              {filteredTransactions.map((t) => (
+                <tr key={t.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div>
-                      <div className="font-medium">{transaction.fecha}</div>
-                      <div className="text-gray-500">{transaction.hora}</div>
+                      <div className="font-medium">{t.fecha}</div>
+                      <div className="text-gray-500">{t.hora}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTypeColor(transaction.tipo)}`}>
-                      {getTypeIcon(transaction.tipo)}
-                      <span className="ml-1">{getTypeLabel(transaction.tipo)}</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTypeColor(t.tipo)}`}>
+                      {getTypeIcon(t.tipo)}
+                      <span className="ml-1">{getTypeLabel(t.tipo)}</span>
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {transaction.recibo}
-                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{t.recibo}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.withdrawalId ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        {transaction.withdrawalId}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
+                    {t.withdrawalId
+                      ? <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">{t.withdrawalId}</span>
+                      : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
                       <User className="h-4 w-4 text-gray-400 mr-2" />
-                      {transaction.cliente}
+                      {t.cliente}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
                       <MapPin className="h-4 w-4 text-gray-400 mr-2" />
-                      {transaction.lote}
+                      {t.lote}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.origen}
-                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t.origen}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    <span className={transaction.total < 0 ? 'text-red-600' : 'text-green-600'}>
-                      ${transaction.total.toFixed(2)}
-                    </span>
+                    <span className={t.total < 0 ? 'text-red-600' : 'text-green-600'}>${t.total.toFixed(2)}</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
-                      {getPaymentIcon(transaction.metodo)}
+                      {getPaymentIcon(t.metodo)}
                       <span className="ml-2 capitalize">
-                        {transaction.metodo === 'combinado' ? 
-                          (() => {
-                            const methods: string[] = [];
-                            if (transaction.paymentBreakdown?.efectivo > 0) methods.push('Efectivo');
-                            if (transaction.paymentBreakdown?.transferencia > 0) methods.push('Transferencia');
-                            if (transaction.paymentBreakdown?.expensa > 0) methods.push('Expensa');
-                            return methods.join(' + ');
-                          })()
-                          : transaction.metodo
-                        }
+                        {t.metodo === 'combinado'
+                          ? ['efectivo','transferencia','expensa']
+                              .filter(k => ((t.paymentBreakdown as any)?.[k] || 0) !== 0)
+                              .map(k => k === 'efectivo' ? 'Efectivo' : k === 'transferencia' ? 'Transferencia' : 'Expensa')
+                              .join(' + ')
+                          : t.metodo}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
-                    {transaction.notes ? (
-                      <div className="truncate" title={transaction.notes}>
-                        {transaction.notes}
-                      </div>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
+                    {t.notes ? <div className="truncate" title={t.notes}>{t.notes}</div> : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <button
-                      onClick={() => {
-                        setSelectedTransaction(prepareTransactionForModal(transaction));
-                        setShowTransactionDetail(true);
-                      }}
+                      onClick={() => { setSelectedTransaction(prepareTransactionForModal(t)); setShowTransactionDetail(true); }}
                       className="text-indigo-600 hover:text-indigo-900 flex items-center"
                       title="Ver detalle completo"
                     >
@@ -965,7 +874,7 @@ const Transactions: React.FC = () => {
             </tbody>
           </table>
         </div>
-        
+
         {filteredTransactions.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-500">No se encontraron transacciones</p>
@@ -973,7 +882,6 @@ const Transactions: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de detalle de transacción */}
       <TransactionDetailModal
         isOpen={showTransactionDetail}
         onClose={() => setShowTransactionDetail(false)}
