@@ -46,7 +46,7 @@ interface TurnTransaction {
 }
 
 const CashRegister: React.FC = () => {
-  const { sales, courtBills, activeTurn, setActiveTurn, refreshData } = useStore();
+  const { sales, courtBills, activeTurn, setActiveTurn, refreshData, withdrawCash } = useStore();
   const [turnTransactions, setTurnTransactions] = useState<TurnTransaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<TurnTransaction[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,47 +88,35 @@ const CashRegister: React.FC = () => {
     const turnStart = new Date(activeTurn.startDate);
     const transactions: TurnTransaction[] = [];
 
-    // Cargar ventas del kiosco del turno actual
-    const turnSales = sales.filter(sale => {
-      const saleDate = new Date(sale.createdAt);
-      return saleDate >= turnStart;
-    });
-
+    // Ventas del kiosco
+    const turnSales = sales.filter(sale => new Date(sale.createdAt) >= turnStart);
     turnSales.forEach(sale => {
-      const saleDate = new Date(sale.createdAt);
-      const transaction: TurnTransaction = {
+      const d = new Date(sale.createdAt);
+      transactions.push({
         id: sale.id,
-        fecha: saleDate.toLocaleDateString('es-ES'),
-        hora: saleDate.toLocaleTimeString('es-ES'),
-        tipo: sale.total < 0 ? 'retiro' : 
-              sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk',
+        fecha: d.toLocaleDateString('es-ES'),
+        hora: d.toLocaleTimeString('es-ES'),
+        tipo: sale.total < 0 ? 'retiro' : (sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk'),
         recibo: sale.receiptNumber,
         cliente: sale.customerName || 'Cliente general',
         lote: sale.lotNumber || '0',
-        origen: sale.total < 0 ? 'Retiro de Caja' : 
-                sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' :
-                sale.courtId || 'Kiosco',
+        origen: sale.total < 0 ? 'Retiro de Caja' : (sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' : (sale.courtId || 'Kiosco')),
         total: sale.total,
         metodo: sale.paymentMethod,
         items: sale.items,
         paymentBreakdown: sale.paymentBreakdown,
         createdAt: sale.createdAt
-      };
-      transactions.push(transaction);
+      });
     });
 
-    // Cargar facturas de canchas del turno actual
-    const turnCourtBills = courtBills.filter(bill => {
-      const billDate = new Date(bill.createdAt);
-      return billDate >= turnStart;
-    });
-
+    // Facturas de canchas
+    const turnCourtBills = courtBills.filter(bill => new Date(bill.createdAt) >= turnStart);
     turnCourtBills.forEach(bill => {
-      const billDate = new Date(bill.createdAt);
-      const transaction: TurnTransaction = {
+      const d = new Date(bill.createdAt);
+      transactions.push({
         id: bill.id,
-        fecha: billDate.toLocaleDateString('es-ES'),
-        hora: billDate.toLocaleTimeString('es-ES'),
+        fecha: d.toLocaleDateString('es-ES'),
+        hora: d.toLocaleTimeString('es-ES'),
         tipo: 'court',
         recibo: bill.receiptNumber,
         cliente: bill.customerName,
@@ -139,18 +127,17 @@ const CashRegister: React.FC = () => {
         items: [...(bill.kioskItems || []), ...(bill.services || [])],
         paymentBreakdown: bill.paymentBreakdown,
         createdAt: bill.createdAt
-      };
-      transactions.push(transaction);
+      });
     });
 
-    // Cargar retiros del turno
+    // Retiros/gastos guardados en el turno (si existieran)
     if (activeTurn.transactions) {
       activeTurn.transactions.forEach(withdrawal => {
-        const withdrawalDate = new Date(withdrawal.createdAt);
-        const transaction: TurnTransaction = {
+        const d = new Date(withdrawal.createdAt);
+        transactions.push({
           id: withdrawal.id,
-          fecha: withdrawalDate.toLocaleDateString('es-ES'),
-          hora: withdrawalDate.toLocaleTimeString('es-ES'),
+          fecha: d.toLocaleDateString('es-ES'),
+          hora: d.toLocaleTimeString('es-ES'),
           tipo: 'retiro',
           recibo: withdrawal.receiptNumber,
           withdrawalId: withdrawal.withdrawalId,
@@ -163,19 +150,53 @@ const CashRegister: React.FC = () => {
           adminName: withdrawal.adminName,
           notes: withdrawal.notes,
           createdAt: withdrawal.createdAt
-        };
-        transactions.push(transaction);
+        });
       });
     }
 
-    // Cargar gastos del turno
+    // **NUEVO**: Retiros desde localStorage (villanueva-transactions)
+    try {
+      const localList: any[] = JSON.parse(localStorage.getItem('villanueva-transactions') || '[]');
+      localList
+        .filter(tx => tx && tx.kind === 'retiro' && new Date(tx.createdAt) >= turnStart)
+        .forEach(tx => {
+          const d = new Date(tx.createdAt);
+          transactions.push({
+            id: tx.id,
+            fecha: d.toLocaleDateString('es-ES'),
+            hora: d.toLocaleTimeString('es-ES'),
+            tipo: 'retiro',
+            recibo: tx.receiptNumber,
+            cliente: `Retiro - ${tx.adminName || 'Admin'}`,
+            lote: '0',
+            origen: 'Retiro de Caja',
+            total: tx.total, // ya viene NEGATIVO
+            metodo: 'efectivo',
+            items: [],
+            adminName: tx.adminName,
+            notes: tx.notes,
+            paymentBreakdown: tx.paymentBreakdown
+              ? {
+                  efectivo: tx.paymentBreakdown.efectivo || 0,
+                  transferencia: tx.paymentBreakdown.transferencia || 0,
+                  expensa: tx.paymentBreakdown.expensa || 0
+                }
+              : { efectivo: tx.total, transferencia: 0, expensa: 0 },
+            createdAt: tx.createdAt
+          });
+        });
+    } catch (e) {
+      console.warn('No se pudieron leer retiros locales:', e);
+    }
+
+    // Gastos del turno
     if (activeTurn.expenses) {
       activeTurn.expenses.forEach(expense => {
-        const expenseDate = new Date(expense.createdAt);
-        const transaction: TurnTransaction = {
+        const d = new Date(expense.createdAt);
+        transactions.push({
           id: expense.id,
-          fecha: expenseDate.toLocaleDateString('es-ES'),
-          hora: expenseDate.toLocaleTimeString('es-ES'),
+          fecha: d.toLocaleDateString('es-ES'),
+          hora: d.toLocaleTimeString('es-ES'),
           tipo: 'gasto',
           recibo: expense.receiptNumber,
           cliente: `Gasto - ${expense.adminName}`,
@@ -187,12 +208,11 @@ const CashRegister: React.FC = () => {
           adminName: expense.adminName,
           notes: expense.detail,
           createdAt: expense.createdAt
-        };
-        transactions.push(transaction);
+        });
       });
     }
 
-    // Ordenar por fecha descendente
+    // Ordenar por fecha desc
     transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     setTurnTransactions(transactions);
   };
@@ -213,19 +233,15 @@ const CashRegister: React.FC = () => {
     if (dateFilter !== 'all') {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
       switch (dateFilter) {
         case 'today':
-          filtered = filtered.filter(t => {
-            const transactionDate = new Date(t.createdAt);
-            return transactionDate >= today;
-          });
+          filtered = filtered.filter(t => new Date(t.createdAt) >= today);
           break;
         case 'yesterday':
           const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
           filtered = filtered.filter(t => {
-            const transactionDate = new Date(t.createdAt);
-            return transactionDate >= yesterday && transactionDate < today;
+            const d = new Date(t.createdAt);
+            return d >= yesterday && d < today;
           });
           break;
       }
@@ -238,69 +254,41 @@ const CashRegister: React.FC = () => {
     setFilteredTransactions(filtered);
   };
 
-  // Calcular totales reales basados en las transacciones cargadas
+  // Totales reales a partir de lo visible (incluye retiros locales negativos)
   const calculateRealTotals = () => {
-    return turnTransactions.reduce((totals, transaction) => {
-      totals.general += transaction.total;
-      
-      if (transaction.metodo === 'combinado' && transaction.paymentBreakdown) {
-        totals.efectivo += transaction.paymentBreakdown.efectivo || 0;
-        totals.transferencia += transaction.paymentBreakdown.transferencia || 0;
-        totals.expensa += transaction.paymentBreakdown.expensa || 0;
+    return turnTransactions.reduce((totals, t) => {
+      totals.general += t.total;
+      if (t.metodo === 'combinado' && t.paymentBreakdown) {
+        totals.efectivo += t.paymentBreakdown.efectivo || 0;
+        totals.transferencia += t.paymentBreakdown.transferencia || 0;
+        totals.expensa += t.paymentBreakdown.expensa || 0;
       } else {
-        if (transaction.metodo === 'efectivo') {
-          totals.efectivo += transaction.total;
-        } else if (transaction.metodo === 'transferencia') {
-          totals.transferencia += transaction.total;
-        } else if (transaction.metodo === 'expensa') {
-          totals.expensa += transaction.total;
-        }
+        if (t.metodo === 'efectivo') totals.efectivo += t.total;
+        if (t.metodo === 'transferencia') totals.transferencia += t.total;
+        if (t.metodo === 'expensa') totals.expensa += t.total;
       }
-      
       return totals;
     }, { general: 0, efectivo: 0, transferencia: 0, expensa: 0 });
   };
 
   const realTotals = calculateRealTotals();
 
+  // **MODIFICADO**: usar withdrawCash del store
   const handleWithdrawal = async () => {
     if (!activeTurn || withdrawalAmount <= 0) return;
-    
-    if (withdrawalAmount > realTotals.efectivo) {
-      alert(`No hay suficiente efectivo en caja. Disponible: $${realTotals.efectivo}`);
+
+    if (withdrawalAmount > Math.max(0, realTotals.efectivo)) {
+      alert(`No hay suficiente efectivo en caja. Disponible: $${realTotals.efectivo.toFixed(2)}`);
       return;
     }
 
     try {
-      const withdrawal = await addExpenseTransaction({
-        type: 'retiro',
-        amount: withdrawalAmount,
-        adminName: activeTurn.adminName,
-        notes: withdrawalNotes,
-        paymentMethod: 'efectivo'
-      });
-
-      const updatedTransactions = [...(activeTurn.transactions || []), withdrawal];
-      const newTotals = {
-        efectivo: activeTurn.totals.efectivo - withdrawalAmount,
-        transferencia: activeTurn.totals.transferencia,
-        expensa: activeTurn.totals.expensa,
-        total: activeTurn.totals.total - withdrawalAmount
-      };
-
-      const updatedTurn = await updateAdminTurn(activeTurn.id, {
-        transactions: updatedTransactions,
-        totals: newTotals
-      });
-
-      if (updatedTurn) {
-        setActiveTurn(updatedTurn);
-      }
-
+      await withdrawCash(withdrawalAmount, withdrawalNotes);
       setWithdrawalAmount(0);
       setWithdrawalNotes('');
       setShowWithdrawalModal(false);
-      await refreshData();
+      // recargar lista con el retiro local recién creado
+      loadTurnTransactions();
     } catch (error) {
       console.error('Error al procesar retiro:', error);
     }
@@ -309,8 +297,8 @@ const CashRegister: React.FC = () => {
   const handleExpense = async () => {
     if (!activeTurn || expenseAmount <= 0 || !expenseConcept.trim()) return;
     
-    if (expenseAmount > realTotals.efectivo) {
-      alert(`No hay suficiente efectivo en caja. Disponible: $${realTotals.efectivo}`);
+    if (expenseAmount > Math.max(0, realTotals.efectivo)) {
+      alert(`No hay suficiente efectivo en caja. Disponible: $${realTotals.efectivo.toFixed(2)}`);
       return;
     }
 
@@ -346,6 +334,7 @@ const CashRegister: React.FC = () => {
       setExpenseAmount(0);
       setShowExpenseModal(false);
       await refreshData();
+      loadTurnTransactions();
     } catch (error) {
       console.error('Error al procesar gasto:', error);
     }
@@ -420,74 +409,63 @@ const CashRegister: React.FC = () => {
       const paymentMethodText = transaction.metodo === 'combinado' ? 
         (() => {
           const methods: string[] = [];
-          if (transaction.paymentBreakdown?.efectivo > 0) methods.push('Efectivo');
-          if (transaction.paymentBreakdown?.transferencia > 0) methods.push('Transferencia');
-          if (transaction.paymentBreakdown?.expensa > 0) methods.push('Expensa');
+          if ((transaction.paymentBreakdown?.efectivo ?? 0) !== 0) methods.push('Efectivo');
+          if ((transaction.paymentBreakdown?.transferencia ?? 0) !== 0) methods.push('Transferencia');
+          if ((transaction.paymentBreakdown?.expensa ?? 0) !== 0) methods.push('Expensa');
           return methods.join(' + ');
         })()
         : transaction.metodo;
       
-      // Calcular montos por método de pago
+      // Montos por método de pago
       let efectivoAmount = 0;
       let transferenciaAmount = 0;
       let expensaAmount = 0;
       
       if (transaction.paymentBreakdown) {
-        // Pago combinado con desglose
         efectivoAmount = transaction.paymentBreakdown.efectivo || 0;
         transferenciaAmount = transaction.paymentBreakdown.transferencia || 0;
         expensaAmount = transaction.paymentBreakdown.expensa || 0;
       } else {
-        // Pago simple: asignar todo el monto al método correspondiente
-        if (transaction.metodo === 'efectivo') {
-          efectivoAmount = transaction.total;
-        } else if (transaction.metodo === 'transferencia') {
-          transferenciaAmount = transaction.total;
-        } else if (transaction.metodo === 'expensa') {
-          expensaAmount = transaction.total;
-        }
+        if (transaction.metodo === 'efectivo') efectivoAmount = transaction.total;
+        if (transaction.metodo === 'transferencia') transferenciaAmount = transaction.total;
+        if (transaction.metodo === 'expensa') expensaAmount = transaction.total;
       }
       
-      // Si la transacción tiene items, crear un renglón por cada item
       if (transaction.items && transaction.items.length > 0) {
-        transaction.items.forEach((item, itemIndex) => {
+        transaction.items.forEach((item, idx) => {
           const itemName = item.product?.name || item.service?.name || item.nombre || 'Item desconocido';
           const itemQuantity = item.quantity || item.cantidad || 1;
           const itemPrice = item.product?.price || item.service?.price || item.precio || 0;
           const itemSubtotal = item.subtotal || (itemPrice * itemQuantity);
-          
-          // Solo en el primer item de cada transacción incluir totales y métodos de pago
-          // En los demás items dejar esas columnas vacías
-          const isFirstItem = itemIndex === 0;
+          const first = idx === 0;
           
           rows.push([
             ...baseTransactionData,
             itemName,
-            itemQuantity.toString(),
-            itemPrice.toString(),
-            itemSubtotal.toString(),
-            isFirstItem ? transaction.total.toString() : '', // Total solo en primer item
-            isFirstItem ? paymentMethodText : '', // Método solo en primer item
-            isFirstItem ? efectivoAmount.toString() : '', // Efectivo solo en primer item
-            isFirstItem ? transferenciaAmount.toString() : '', // Transferencia solo en primer item
-            isFirstItem ? expensaAmount.toString() : '', // Expensa solo en primer item
-            isFirstItem ? (transaction.notes || '') : '' // Notas solo en primer item
+            String(itemQuantity),
+            String(itemPrice),
+            String(itemSubtotal),
+            first ? String(transaction.total) : '',
+            first ? paymentMethodText : '',
+            first ? String(efectivoAmount) : '',
+            first ? String(transferenciaAmount) : '',
+            first ? String(expensaAmount) : '',
+            first ? (transaction.notes || '') : ''
           ]);
         });
       } else {
-        // Si no tiene items, crear un renglón con la transacción completa
         rows.push([
           ...baseTransactionData,
-          'Sin items detallados', // Item
-          '1', // Cantidad
-          transaction.total.toString(), // Precio unitario = total
-          transaction.total.toString(), // Subtotal = total
-          transaction.total.toString(), // Total transacción
-          paymentMethodText, // Método
-          efectivoAmount.toString(), // Efectivo
-          transferenciaAmount.toString(), // Transferencia
-          expensaAmount.toString(), // Expensa
-          transaction.notes || '' // Notas
+          'Sin items detallados',
+          '1',
+          String(transaction.total),
+          String(transaction.total),
+          String(transaction.total),
+          paymentMethodText,
+          String(efectivoAmount),
+          String(transferenciaAmount),
+          String(expensaAmount),
+          transaction.notes || ''
         ]);
       }
     });
@@ -597,7 +575,7 @@ const CashRegister: React.FC = () => {
   };
 
   const prepareTransactionForModal = (transaction: TurnTransaction) => {
-    const items = (transaction.items || []).map(item => ({
+    const items = (transaction.items || []).map((item: any) => ({
       id: item.id || `item-${Date.now()}-${Math.random()}`,
       nombre: item.product?.name || item.service?.name || item.nombre || 'Item desconocido',
       cantidad: item.quantity || item.cantidad || 1,
@@ -607,10 +585,7 @@ const CashRegister: React.FC = () => {
       categoria: item.product?.category || item.service?.category || item.categoria || 'Sin categoría'
     }));
 
-    return {
-      ...transaction,
-      items
-    };
+    return { ...transaction, items };
   };
 
   const getTypeIcon = (type: string) => {
@@ -716,7 +691,7 @@ const CashRegister: React.FC = () => {
         </div>
       </div>
 
-      {/* Información del turno activo */}
+      {/* Información del turno */}
       <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
@@ -742,7 +717,7 @@ const CashRegister: React.FC = () => {
         </div>
       </div>
 
-      {/* Totales por método de pago - USANDO TOTALES REALES */}
+      {/* Totales visibles */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-green-500">
           <div className="flex items-center">
@@ -836,7 +811,7 @@ const CashRegister: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabla de transacciones del turno */}
+      {/* Tabla */}
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <div className="px-4 py-5 sm:p-6">
           <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
@@ -915,9 +890,9 @@ const CashRegister: React.FC = () => {
                         {transaction.metodo === 'combinado' ? 
                           (() => {
                             const methods: string[] = [];
-                            if (transaction.paymentBreakdown?.efectivo > 0) methods.push('Efectivo');
-                            if (transaction.paymentBreakdown?.transferencia > 0) methods.push('Transferencia');
-                            if (transaction.paymentBreakdown?.expensa > 0) methods.push('Expensa');
+                            if ((transaction.paymentBreakdown?.efectivo ?? 0) !== 0) methods.push('Efectivo');
+                            if ((transaction.paymentBreakdown?.transferencia ?? 0) !== 0) methods.push('Transferencia');
+                            if ((transaction.paymentBreakdown?.expensa ?? 0) !== 0) methods.push('Expensa');
                             return methods.join(' + ');
                           })()
                           : transaction.metodo
@@ -926,9 +901,9 @@ const CashRegister: React.FC = () => {
                     </div>
                     {transaction.paymentBreakdown && (
                       <div className="text-xs text-gray-500 mt-1">
-                        {transaction.paymentBreakdown.efectivo > 0 && <div>💵 ${transaction.paymentBreakdown.efectivo}</div>}
-                        {transaction.paymentBreakdown.transferencia > 0 && <div>💳 ${transaction.paymentBreakdown.transferencia}</div>}
-                        {transaction.paymentBreakdown.expensa > 0 && <div>📄 ${transaction.paymentBreakdown.expensa}</div>}
+                        {(transaction.paymentBreakdown.efectivo ?? 0) !== 0 && <div>💵 ${transaction.paymentBreakdown.efectivo}</div>}
+                        {(transaction.paymentBreakdown.transferencia ?? 0) !== 0 && <div>💳 ${transaction.paymentBreakdown.transferencia}</div>}
+                        {(transaction.paymentBreakdown.expensa ?? 0) !== 0 && <div>📄 ${transaction.paymentBreakdown.expensa}</div>}
                       </div>
                     )}
                   </td>
@@ -957,7 +932,7 @@ const CashRegister: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de retiro de dinero */}
+      {/* Modal de retiro */}
       {showWithdrawalModal && (
         <div className="fixed inset-0 z-50 overflow-hidden">
           <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowWithdrawalModal(false)} />
@@ -999,7 +974,7 @@ const CashRegister: React.FC = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="0.00"
                   min="0"
-                  max={realTotals.efectivo}
+                  max={Math.max(0, realTotals.efectivo)}
                   step="0.01"
                 />
               </div>
@@ -1026,7 +1001,7 @@ const CashRegister: React.FC = () => {
                 </button>
                 <button
                   onClick={handleWithdrawal}
-                  disabled={withdrawalAmount <= 0 || withdrawalAmount > realTotals.efectivo}
+                  disabled={withdrawalAmount <= 0 || withdrawalAmount > Math.max(0, realTotals.efectivo)}
                   className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Confirmar Retiro
