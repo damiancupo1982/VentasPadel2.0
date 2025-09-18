@@ -76,6 +76,28 @@ const TURN_CLOSURES_KEY = 'villanueva-turn-closures';
 const WITHDRAWAL_COUNTER_KEY = 'villanueva-withdrawal-counter';
 const OPEN_BILLS_KEY = 'villanueva-open-bills';
 
+// ---- Marcado de eliminadas (soft-delete para UI/backup) ----
+const DELETED_TX_IDS_KEY = 'villanueva-deleted-transaction-ids';
+
+const readDeletedIds = (): string[] => {
+  try { return JSON.parse(localStorage.getItem(DELETED_TX_IDS_KEY) || '[]'); }
+  catch { return []; }
+};
+const pushDeletedId = (id: string) => {
+  const setIds = new Set(readDeletedIds());
+  setIds.add(id);
+  localStorage.setItem(DELETED_TX_IDS_KEY, JSON.stringify([...setIds]));
+};
+const removeFromHistoricalTransactions = (id: string) => {
+  try {
+    const raw = localStorage.getItem('historical-transactions-v1');
+    if (!raw) return;
+    const arr = JSON.parse(raw) || [];
+    const filtered = arr.filter((t: any) => t?.id !== id);
+    localStorage.setItem('historical-transactions-v1', JSON.stringify(filtered));
+  } catch { /* noop */ }
+};
+
 // ---------- Generadores ----------
 const getNextReceiptNumber = async (): Promise<string> => {
   const counter = (await storage.get(RECEIPT_COUNTER_KEY)) || 0;
@@ -238,7 +260,6 @@ export const addSale = async (sale: Omit<Sale, 'id' | 'receiptNumber' | 'created
   let finalPaymentBreakdown = sale.paymentBreakdown;
   
   if (!finalPaymentBreakdown) {
-    // Si no viene paymentBreakdown, crearlo basado en el método de pago
     if (sale.paymentMethod === 'efectivo') {
       finalPaymentBreakdown = { efectivo: sale.total, transferencia: 0, expensa: 0 };
     } else if (sale.paymentMethod === 'transferencia') {
@@ -246,7 +267,6 @@ export const addSale = async (sale: Omit<Sale, 'id' | 'receiptNumber' | 'created
     } else if (sale.paymentMethod === 'expensa') {
       finalPaymentBreakdown = { efectivo: 0, transferencia: 0, expensa: sale.total };
     } else {
-      // Para 'combinado' sin desglose, distribuir equitativamente (fallback)
       const third = Math.round(sale.total / 3);
       finalPaymentBreakdown = { efectivo: third, transferencia: third, expensa: sale.total - (third * 2) };
     }
@@ -485,8 +505,6 @@ export const addExpenseTransaction = async (
     createdAt: new Date().toISOString()
   };
 
-  // Si además guardás estas transacciones en algún store, hacelo acá.
-  // (No se especificó una tabla clave; se retorna para que el caller lo persista si quiere)
   return newExpense;
 };
 
@@ -574,6 +592,7 @@ export const exportData = async () => {
     classData,
     counters: { receiptCounter, withdrawalCounter },
     historicalTransactions,
+    deletedTransactionIds: readDeletedIds(),
     systemConfig: {
       isAdmin: localStorage.getItem('villanueva-padel-store')
         ? JSON.parse(localStorage.getItem('villanueva-padel-store') || '{}').state?.isAdmin || false
@@ -626,6 +645,10 @@ export const importData = async (data: any) => {
     localStorage.setItem('historical-transactions-v1', JSON.stringify(data.historicalTransactions));
   }
 
+  if (Array.isArray(data.deletedTransactionIds)) {
+    localStorage.setItem(DELETED_TX_IDS_KEY, JSON.stringify(data.deletedTransactionIds));
+  }
+
   if (data.systemConfig) {
     const currentStore = localStorage.getItem('villanueva-padel-store');
     if (currentStore) {
@@ -675,4 +698,76 @@ export const updateOpenBill = async (reservationId: string, updates: Partial<Ope
   await storage.set(OPEN_BILLS_KEY, bills);
   localStorage.setItem(OPEN_BILLS_KEY, JSON.stringify(bills));
   return bills[index];
+};
+
+// ===================================================================
+// ******* NUEVO: Eliminar y devolver stock (ventas / facturas) *******
+// ===================================================================
+
+/** Marca el id como eliminado y lo quita del storage histórico */
+export const softDeleteTransactionById = async (id: string): Promise<void> => {
+  pushDeletedId(id);
+  removeFromHistoricalTransactions(id);
+};
+
+/** Anula una venta de kiosco: repone stock y elimina la venta */
+export const deleteSaleAndRestock = async (saleId: string): Promise<boolean> => {
+  const sales = await getSales();
+  const idx = sales.findIndex(s => s.id === saleId);
+  if (idx === -1) return false;
+
+  const sale = sales[idx];
+
+  // Devolver stock por cada item
+  for (const item of sale.items) {
+    await addMovement({
+      productId: item.product.id,
+      productName: item.product.name,
+      type: 'entrada',
+      quantity: item.quantity,
+      unitPrice: item.product.price,
+      total: item.subtotal,
+      courtId: sale.courtId,
+      notes: `Anulación venta ${sale.receiptNumber}`
+    });
+  }
+
+  // Eliminar la venta
+  sales.splice(idx, 1);
+  await storage.set(SALES_KEY, sales);
+
+  // Marcar soft-delete para UI/backup y limpiar histórico
+  await softDeleteTransactionById(saleId);
+  return true;
+};
+
+/** Anula una factura de cancha: repone stock de kioskItems y elimina la factura */
+export const deleteCourtBillAndRestock = async (billId: string): Promise<boolean> => {
+  const bills = await getCourtBills();
+  const idx = bills.findIndex(b => b.id === billId);
+  if (idx === -1) return false;
+
+  const bill = bills[idx];
+
+  // Devolver stock de productos de kiosco incluidos
+  for (const item of bill.kioskItems || []) {
+    await addMovement({
+      productId: item.product.id,
+      productName: item.product.name,
+      type: 'entrada',
+      quantity: item.quantity,
+      unitPrice: item.product.price,
+      total: item.subtotal,
+      courtId: bill.courtId,
+      notes: `Anulación factura ${bill.receiptNumber}`
+    });
+  }
+
+  // Eliminar la factura
+  bills.splice(idx, 1);
+  await storage.set(COURT_BILLS_KEY, bills);
+
+  // Soft-delete para UI/backup e histórico
+  await softDeleteTransactionById(billId);
+  return true;
 };
