@@ -21,7 +21,8 @@ import {
 import { useStore } from '../store/useStore';
 import { updateAdminTurn, addExpenseTransaction } from '../utils/db';
 import TransactionDetailModal from '../components/TransactionDetailModal';
-import SupervisorLogin from '../components/SupervisorLogin'; // 👈 NUEVO
+
+const DELETED_KEY = 'villanueva-deleted-transaction-ids';
 
 interface TurnTransaction {
   id: string;
@@ -36,6 +37,8 @@ interface TurnTransaction {
   total: number;
   metodo: 'efectivo' | 'transferencia' | 'expensa' | 'combinado';
   items?: any[];
+  /** ítems crudos originales (para revertir stock en el modal) */
+  __rawItems?: any[];
   adminName?: string;
   notes?: string;
   paymentBreakdown?: {
@@ -83,9 +86,18 @@ const CashRegister: React.FC = () => {
     applyFilters();
   }, [turnTransactions, searchTerm, dateFilter, paymentFilter]);
 
+  const getDeletedIds = () => {
+    try {
+      return new Set<string>(JSON.parse(localStorage.getItem(DELETED_KEY) || '[]'));
+    } catch {
+      return new Set<string>();
+    }
+  };
+
   const loadTurnTransactions = () => {
     if (!activeTurn) return;
 
+    const deleted = getDeletedIds();
     const turnStart = new Date(activeTurn.startDate);
     const transactions: TurnTransaction[] = [];
 
@@ -96,6 +108,7 @@ const CashRegister: React.FC = () => {
     });
 
     turnSales.forEach(sale => {
+      if (deleted.has(sale.id)) return;
       const saleDate = new Date(sale.createdAt);
       const transaction: TurnTransaction = {
         id: sale.id,
@@ -111,7 +124,8 @@ const CashRegister: React.FC = () => {
                 sale.courtId || 'Kiosco',
         total: sale.total,
         metodo: sale.paymentMethod,
-        items: sale.items,
+        items: sale.items,                  // normalizado después para el modal
+        __rawItems: sale.items,             // crudo para revertir stock
         paymentBreakdown: sale.paymentBreakdown,
         createdAt: sale.createdAt
       };
@@ -125,7 +139,9 @@ const CashRegister: React.FC = () => {
     });
 
     turnCourtBills.forEach(bill => {
+      if (deleted.has(bill.id)) return;
       const billDate = new Date(bill.createdAt);
+      const raw = [...(bill.kioskItems || []), ...(bill.services || [])];
       const transaction: TurnTransaction = {
         id: bill.id,
         fecha: billDate.toLocaleDateString('es-ES'),
@@ -137,7 +153,8 @@ const CashRegister: React.FC = () => {
         origen: bill.courtName,
         total: bill.total,
         metodo: bill.paymentMethod,
-        items: [...(bill.kioskItems || []), ...(bill.services || [])],
+        items: raw,
+        __rawItems: raw,
         paymentBreakdown: bill.paymentBreakdown,
         createdAt: bill.createdAt
       };
@@ -147,6 +164,7 @@ const CashRegister: React.FC = () => {
     // Cargar retiros del turno
     if (activeTurn.transactions) {
       activeTurn.transactions.forEach(withdrawal => {
+        if (deleted.has(withdrawal.id)) return;
         const withdrawalDate = new Date(withdrawal.createdAt);
         const transaction: TurnTransaction = {
           id: withdrawal.id,
@@ -161,6 +179,7 @@ const CashRegister: React.FC = () => {
           total: -withdrawal.amount,
           metodo: 'efectivo',
           items: [],
+          __rawItems: [],
           adminName: withdrawal.adminName,
           notes: withdrawal.notes,
           createdAt: withdrawal.createdAt
@@ -172,6 +191,7 @@ const CashRegister: React.FC = () => {
     // Cargar gastos del turno
     if (activeTurn.expenses) {
       activeTurn.expenses.forEach(expense => {
+        if (deleted.has(expense.id)) return;
         const expenseDate = new Date(expense.createdAt);
         const transaction: TurnTransaction = {
           id: expense.id,
@@ -185,6 +205,7 @@ const CashRegister: React.FC = () => {
           total: -expense.amount,
           metodo: 'efectivo',
           items: [],
+          __rawItems: [],
           adminName: expense.adminName,
           notes: expense.detail,
           createdAt: expense.createdAt
@@ -598,6 +619,10 @@ const CashRegister: React.FC = () => {
   };
 
   const prepareTransactionForModal = (transaction: TurnTransaction) => {
+    const raw = Array.isArray((transaction as any).__rawItems)
+      ? (transaction as any).__rawItems
+      : Array.isArray(transaction.items) ? transaction.items : [];
+
     const items = (transaction.items || []).map(item => ({
       id: item.id || `item-${Date.now()}-${Math.random()}`,
       nombre: item.product?.name || item.service?.name || item.nombre || 'Item desconocido',
@@ -610,7 +635,8 @@ const CashRegister: React.FC = () => {
 
     return {
       ...transaction,
-      items
+      items,
+      __rawItems: raw
     };
   };
 
@@ -693,7 +719,6 @@ const CashRegister: React.FC = () => {
           </p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-2">
-          <SupervisorLogin /> {/* 👈 NUEVO */}
           <button
             onClick={exportTransactionsCSV}
             className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
@@ -1043,7 +1068,7 @@ const CashRegister: React.FC = () => {
       <TransactionDetailModal
         isOpen={showTransactionDetail}
         onClose={() => setShowTransactionDetail(false)}
-        transaction={selectedTransaction}
+        transaction={selectedTransaction as any}
       />
     </div>
   );
