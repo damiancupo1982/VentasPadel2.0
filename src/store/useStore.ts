@@ -78,7 +78,9 @@ interface StoreState {
   openBills: OpenBill[]; // Facturas abiertas de canchas
   isLoading: boolean;
   isAdmin: boolean;
-  
+  /** NUEVO: modo Supervisor (no persiste en storage) */
+  isSupervisor: boolean;
+
   // Actions
   setProducts: (products: Product[]) => void;
   setMovements: (movements: Movement[]) => void;
@@ -102,6 +104,8 @@ interface StoreState {
   clearCart: () => void;
   setLoading: (loading: boolean) => void;
   setAdmin: (isAdmin: boolean) => void;
+  /** NUEVO: habilitar/deshabilitar modo Supervisor */
+  setSupervisor: (isSupervisor: boolean) => void;
 
   /** NUEVO: registrar retiro de efectivo y actualizar totales del turno */
   withdrawCash: (amount: number, notes?: string) => Promise<void>;
@@ -130,6 +134,7 @@ export const useStore = create<StoreState>()(
       openBills: [],
       isLoading: false,
       isAdmin: false,
+      isSupervisor: false,
       
       setProducts: (products) => set({ products }),
       setMovements: (movements) => set({ movements }),
@@ -165,6 +170,7 @@ export const useStore = create<StoreState>()(
       },
       setLoading: (isLoading) => set({ isLoading }),
       setAdmin: (isAdmin) => set({ isAdmin }),
+      setSupervisor: (isSupervisor) => set({ isSupervisor }),
       
       addToCart: (product, quantity) => {
         const cart = get().cart;
@@ -249,8 +255,7 @@ export const useStore = create<StoreState>()(
           set({ activeTurn: updatedTurn });
         }
 
-        // Nota: en el PASO 4 podemos persistir esta bajada de efectivo en la DB de turnos
-        // (updateAdminTurn) si lo estás guardando también en IndexedDB/Supabase.
+        // Nota: persistencia en DB de turnos se maneja en CashRegister.
       },
       
       getCartTotal: () => {
@@ -292,6 +297,7 @@ export const useStore = create<StoreState>()(
       partialize: (state) => ({ 
         isAdmin: state.isAdmin,
         openBills: state.openBills 
+        // NOTA: isSupervisor NO se persiste
       }),
       onRehydrateStorage: () => (state) => {
         // Sincronizar openBills con localStorage al rehidratar
