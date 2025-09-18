@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import TransactionDetailModal from '../components/TransactionDetailModal';
-import SupervisorLogin from '../components/SupervisorLogin'; // 👈 NUEVO
+
+const DELETED_KEY = 'villanueva-deleted-transaction-ids';
 
 interface HistoricalTransaction {
   id: string;
@@ -34,6 +35,8 @@ interface HistoricalTransaction {
   total: number;
   metodo: 'efectivo' | 'transferencia' | 'expensa' | 'combinado';
   items?: any[];
+  /** ítems crudos para revertir stock en el modal */
+  __rawItems?: any[];
   adminName?: string;
   notes?: string;
   paymentBreakdown?: {
@@ -57,7 +60,7 @@ const Transactions: React.FC = () => {
   const [showTransactionDetail, setShowTransactionDetail] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<HistoricalTransaction | null>(null);
 
-  // Estados separados para filtros (controlados manualmente)
+  // Estados separados para los filtros (no aplicados automáticamente)
   const [tempSearchTerm, setTempSearchTerm] = useState('');
   const [tempDateFilter, setTempDateFilter] = useState('all');
   const [tempCustomDateStart, setTempCustomDateStart] = useState('');
@@ -105,109 +108,110 @@ const Transactions: React.FC = () => {
 
   const updateHistoricalTransactions = () => {
     const existingIds = new Set(transactions.map(t => t.id));
+    const deleted = new Set<string>(JSON.parse(localStorage.getItem(DELETED_KEY) || '[]'));
     const newTransactions: HistoricalTransaction[] = [];
 
     // Procesar ventas del kiosco
     sales.forEach(sale => {
-      if (!existingIds.has(sale.id)) {
-        const saleDate = new Date(sale.createdAt);
-        const transaction: HistoricalTransaction = {
-          id: sale.id,
-          fecha: saleDate.toLocaleDateString('es-ES'),
-          hora: saleDate.toLocaleTimeString('es-ES'),
-          tipo: sale.total < 0 ? 'retiro' : 
-                sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk',
-          recibo: sale.receiptNumber,
-          cliente: sale.customerName || 'Cliente general',
-          lote: sale.lotNumber || '0',
-          origen: sale.total < 0 ? 'Retiro de Caja' : 
-                  sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' :
-                  sale.courtId || 'Kiosco',
-          total: sale.total,
-          metodo: sale.paymentMethod,
-          paymentBreakdown: sale.paymentBreakdown,
-          items: sale.items,
-          createdAt: sale.createdAt
-        };
-        newTransactions.push(transaction);
-      }
+      if (existingIds.has(sale.id) || deleted.has(sale.id)) return;
+      const saleDate = new Date(sale.createdAt);
+      const transaction: HistoricalTransaction = {
+        id: sale.id,
+        fecha: saleDate.toLocaleDateString('es-ES'),
+        hora: saleDate.toLocaleTimeString('es-ES'),
+        tipo: sale.total < 0 ? 'retiro' : 
+              sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk',
+        recibo: sale.receiptNumber,
+        cliente: sale.customerName || 'Cliente general',
+        lote: sale.lotNumber || '0',
+        origen: sale.total < 0 ? 'Retiro de Caja' : 
+                sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' :
+                sale.courtId || 'Kiosco',
+        total: sale.total,
+        metodo: sale.paymentMethod,
+        paymentBreakdown: sale.paymentBreakdown,
+        items: sale.items,
+        __rawItems: sale.items,
+        createdAt: sale.createdAt
+      };
+      newTransactions.push(transaction);
     });
 
     // Procesar facturas de canchas
     courtBills.forEach(bill => {
-      if (!existingIds.has(bill.id)) {
-        const billDate = new Date(bill.createdAt);
-        const transaction: HistoricalTransaction = {
-          id: bill.id,
-          fecha: billDate.toLocaleDateString('es-ES'),
-          hora: billDate.toLocaleTimeString('es-ES'),
-          tipo: 'court',
-          recibo: bill.receiptNumber,
-          cliente: bill.customerName,
-          lote: bill.lotNumber || '0',
-          origen: bill.courtName,
-          total: bill.total,
-          metodo: bill.paymentMethod === 'combinado' ? 'combinado' : bill.paymentMethod,
-          paymentBreakdown: bill.paymentBreakdown,
-          items: [...(bill.kioskItems || []), ...(bill.services || [])],
-          createdAt: bill.createdAt
-        };
-        newTransactions.push(transaction);
-      }
+      if (existingIds.has(bill.id) || deleted.has(bill.id)) return;
+      const billDate = new Date(bill.createdAt);
+      const raw = [...(bill.kioskItems || []), ...(bill.services || [])];
+      const transaction: HistoricalTransaction = {
+        id: bill.id,
+        fecha: billDate.toLocaleDateString('es-ES'),
+        hora: billDate.toLocaleTimeString('es-ES'),
+        tipo: 'court',
+        recibo: bill.receiptNumber,
+        cliente: bill.customerName,
+        lote: bill.lotNumber || '0',
+        origen: bill.courtName,
+        total: bill.total,
+        metodo: bill.paymentMethod === 'combinado' ? 'combinado' : bill.paymentMethod,
+        paymentBreakdown: bill.paymentBreakdown,
+        items: raw,
+        __rawItems: raw,
+        createdAt: bill.createdAt
+      };
+      newTransactions.push(transaction);
     });
 
-    // Procesar retiros de todos los turnos
+    // Procesar retiros y gastos de todos los turnos
     const allTurns = JSON.parse(localStorage.getItem('villanueva-admin-turns') || '[]');
     allTurns.forEach((turn: any) => {
       if (turn.transactions) {
         turn.transactions.forEach((withdrawal: any) => {
-          if (!existingIds.has(withdrawal.id)) {
-            const withdrawalDate = new Date(withdrawal.createdAt);
-            const transaction: HistoricalTransaction = {
-              id: withdrawal.id,
-              fecha: withdrawalDate.toLocaleDateString('es-ES'),
-              hora: withdrawalDate.toLocaleTimeString('es-ES'),
-              tipo: 'retiro',
-              recibo: withdrawal.receiptNumber,
-              withdrawalId: withdrawal.withdrawalId || `RETIRO-${withdrawal.id.slice(-4)}`,
-              cliente: `Retiro - ${withdrawal.adminName}`,
-              lote: '0',
-              origen: 'Retiro de Caja',
-              total: -withdrawal.amount,
-              metodo: 'efectivo',
-              items: [],
-              adminName: withdrawal.adminName,
-              notes: withdrawal.notes,
-              createdAt: withdrawal.createdAt
-            };
-            newTransactions.push(transaction);
-          }
+          if (existingIds.has(withdrawal.id) || deleted.has(withdrawal.id)) return;
+          const withdrawalDate = new Date(withdrawal.createdAt);
+          const transaction: HistoricalTransaction = {
+            id: withdrawal.id,
+            fecha: withdrawalDate.toLocaleDateString('es-ES'),
+            hora: withdrawalDate.toLocaleTimeString('es-ES'),
+            tipo: 'retiro',
+            recibo: withdrawal.receiptNumber,
+            withdrawalId: withdrawal.withdrawalId || `RETIRO-${withdrawal.id.slice(-4)}`,
+            cliente: `Retiro - ${withdrawal.adminName}`,
+            lote: '0',
+            origen: 'Retiro de Caja',
+            total: -withdrawal.amount,
+            metodo: 'efectivo',
+            items: [],
+            __rawItems: [],
+            adminName: withdrawal.adminName,
+            notes: withdrawal.notes,
+            createdAt: withdrawal.createdAt
+          };
+          newTransactions.push(transaction);
         });
       }
       
-      // Procesar gastos de todos los turnos
       if (turn.expenses) {
         turn.expenses.forEach((expense: any) => {
-          if (!existingIds.has(expense.id)) {
-            const expenseDate = new Date(expense.createdAt);
-            const transaction: HistoricalTransaction = {
-              id: expense.id,
-              fecha: expenseDate.toLocaleDateString('es-ES'),
-              hora: expenseDate.toLocaleTimeString('es-ES'),
-              tipo: 'gasto',
-              recibo: expense.receiptNumber,
-              cliente: `Gasto - ${expense.adminName}`,
-              lote: '0',
-              origen: expense.concept,
-              total: -expense.amount,
-              metodo: 'efectivo',
-              items: [],
-              adminName: expense.adminName,
-              notes: expense.detail,
-              createdAt: expense.createdAt
-            };
-            newTransactions.push(transaction);
-          }
+          if (existingIds.has(expense.id) || deleted.has(expense.id)) return;
+          const expenseDate = new Date(expense.createdAt);
+          const transaction: HistoricalTransaction = {
+            id: expense.id,
+            fecha: expenseDate.toLocaleDateString('es-ES'),
+            hora: expenseDate.toLocaleTimeString('es-ES'),
+            tipo: 'gasto',
+            recibo: expense.receiptNumber,
+            cliente: `Gasto - ${expense.adminName}`,
+            lote: '0',
+            origen: expense.concept,
+            total: -expense.amount,
+            metodo: 'efectivo',
+            items: [],
+            __rawItems: [],
+            adminName: expense.adminName,
+            notes: expense.detail,
+            createdAt: expense.createdAt
+          };
+          newTransactions.push(transaction);
         });
       }
     });
@@ -219,7 +223,7 @@ const Transactions: React.FC = () => {
     }
   };
 
-  // Aplicar filtros (cuando el usuario hace clic en "Aplicar")
+  // Función para aplicar filtros manualmente
   const handleApplyFilters = () => {
     setSearchTerm(tempSearchTerm);
     setDateFilter(tempDateFilter);
@@ -238,7 +242,7 @@ const Transactions: React.FC = () => {
     );
   };
 
-  // Limpiar filtros
+  // Función para limpiar filtros
   const handleClearFilters = () => {
     setTempSearchTerm('');
     setTempDateFilter('all');
@@ -267,7 +271,6 @@ const Transactions: React.FC = () => {
   ) => {
     let filtered = [...transactions];
 
-    // Búsqueda
     if (searchValue) {
       const term = searchValue.toLowerCase();
       filtered = filtered.filter(t => 
@@ -278,41 +281,49 @@ const Transactions: React.FC = () => {
       );
     }
 
-    // Fecha
     if (dateValue !== 'all') {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       switch (dateValue) {
         case 'today': {
-          filtered = filtered.filter(t => new Date(t.createdAt) >= today);
+          filtered = filtered.filter(t => {
+            const transactionDate = new Date(t.createdAt);
+            return transactionDate >= today;
+          });
           break;
         }
         case 'yesterday': {
-          const y = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+          const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
           filtered = filtered.filter(t => {
-            const d = new Date(t.createdAt);
-            return d >= y && d < today;
+            const transactionDate = new Date(t.createdAt);
+            return transactionDate >= yesterday && transactionDate < today;
           });
           break;
         }
         case 'week': {
           const weekStart = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-          filtered = filtered.filter(t => new Date(t.createdAt) >= weekStart);
+          filtered = filtered.filter(t => {
+            const transactionDate = new Date(t.createdAt);
+            return transactionDate >= weekStart;
+          });
           break;
         }
         case 'month': {
           const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          filtered = filtered.filter(t => new Date(t.createdAt) >= monthStart);
+          filtered = filtered.filter(t => {
+            const transactionDate = new Date(t.createdAt);
+            return transactionDate >= monthStart;
+          });
           break;
         }
         case 'custom': {
           if (startDate && endDate) {
-            const s = new Date(startDate);
-            const e = new Date(endDate + 'T23:59:59');
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate + 'T23:59:59');
             filtered = filtered.filter(t => {
-              const d = new Date(t.createdAt);
-              return d >= s && d <= e;
+              const transactionDate = new Date(t.createdAt);
+              return transactionDate >= startDateObj && transactionDate <= endDateObj;
             });
           }
           break;
@@ -320,12 +331,10 @@ const Transactions: React.FC = () => {
       }
     }
 
-    // Tipo
     if (typeValue) {
       filtered = filtered.filter(t => t.tipo === typeValue);
     }
 
-    // Método de pago
     if (paymentValue) {
       filtered = filtered.filter(t => t.metodo === paymentValue);
     }
@@ -333,7 +342,91 @@ const Transactions: React.FC = () => {
     setFilteredTransactions(filtered);
   };
 
-  // Export por items
+  const exportTransactionsCSV = () => {
+    if (filteredTransactions.length === 0) {
+      alert('No hay transacciones filtradas para exportar');
+      return;
+    }
+
+    const headers = [
+      'Fecha', 
+      'Hora', 
+      'Tipo', 
+      'Recibo', 
+      'ID Retiro', 
+      'Cliente', 
+      'Lote', 
+      'Origen', 
+      'Total', 
+      'Método', 
+      'Notas/Detalle', 
+      'Monto Efectivo', 
+      'Monto Transferencia', 
+      'Monto Expensa'
+    ];
+    
+    const rows = filteredTransactions.map(transaction => {
+      let efectivoAmount = 0;
+      let transferenciaAmount = 0;
+      let expensaAmount = 0;
+      
+      if (transaction.paymentBreakdown) {
+        efectivoAmount = transaction.paymentBreakdown.efectivo || 0;
+        transferenciaAmount = transaction.paymentBreakdown.transferencia || 0;
+        expensaAmount = transaction.paymentBreakdown.expensa || 0;
+      } else {
+        if (transaction.metodo === 'efectivo') {
+          efectivoAmount = transaction.total;
+        } else if (transaction.metodo === 'transferencia') {
+          transferenciaAmount = transaction.total;
+        } else if (transaction.metodo === 'expensa') {
+          expensaAmount = transaction.total;
+        }
+      }
+      
+      const paymentMethodText = transaction.metodo === 'combinado' ? 
+        (() => {
+          const methods: string[] = [];
+          if (efectivoAmount > 0) methods.push('Efectivo');
+          if (transferenciaAmount > 0) methods.push('Transferencia');
+          if (expensaAmount > 0) methods.push('Expensa');
+          return methods.join(' + ');
+        })()
+        : transaction.metodo;
+      
+      return [
+        transaction.fecha,
+        transaction.hora,
+        getTypeLabel(transaction.tipo),
+        transaction.recibo,
+        transaction.withdrawalId || '-',
+        transaction.cliente,
+        transaction.lote || '-',
+        transaction.origen,
+        transaction.total,
+        paymentMethodText,
+        transaction.notes || '-',
+        efectivoAmount,
+        transferenciaAmount,
+        expensaAmount
+      ];
+    });
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transacciones-filtradas-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const exportAllTransactionsCSV = () => {
     if (filteredTransactions.length === 0) {
       alert('No hay transacciones para exportar');
@@ -385,7 +478,6 @@ const Transactions: React.FC = () => {
         })()
         : transaction.metodo;
       
-      // Montos por método
       let efectivoAmount = 0;
       let transferenciaAmount = 0;
       let expensaAmount = 0;
@@ -405,25 +497,25 @@ const Transactions: React.FC = () => {
       }
       
       if (transaction.items && transaction.items.length > 0) {
-        transaction.items.forEach((item, idx) => {
+        transaction.items.forEach((item, itemIndex) => {
           const itemName = item.product?.name || item.service?.name || item.nombre || 'Item desconocido';
           const itemQuantity = item.quantity || item.cantidad || 1;
           const itemPrice = item.product?.price || item.service?.price || item.precio || 0;
           const itemSubtotal = item.subtotal || (itemPrice * itemQuantity);
+          const isFirstItem = itemIndex === 0;
           
-          const first = idx === 0;
           rows.push([
             ...baseTransactionData,
             itemName,
             itemQuantity.toString(),
             itemPrice.toString(),
             itemSubtotal.toString(),
-            first ? transaction.total.toString() : '',
-            first ? paymentMethodText : '',
-            first ? efectivoAmount.toString() : '',
-            first ? transferenciaAmount.toString() : '',
-            first ? expensaAmount.toString() : '',
-            first ? (transaction.notes || '') : ''
+            isFirstItem ? transaction.total.toString() : '',
+            isFirstItem ? paymentMethodText : '',
+            isFirstItem ? efectivoAmount.toString() : '',
+            isFirstItem ? transferenciaAmount.toString() : '',
+            isFirstItem ? expensaAmount.toString() : '',
+            isFirstItem ? (transaction.notes || '') : ''
           ]);
         });
       } else {
@@ -458,6 +550,28 @@ const Transactions: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const prepareTransactionForModal = (transaction: HistoricalTransaction): HistoricalTransaction => {
+    const raw = Array.isArray((transaction as any).__rawItems)
+      ? (transaction as any).__rawItems
+      : Array.isArray(transaction.items) ? transaction.items : [];
+
+    const items = (transaction.items || []).map(item => ({
+      id: item.id || `item-${Date.now()}-${Math.random()}`,
+      nombre: item.product?.name || item.service?.name || item.nombre || 'Item desconocido',
+      cantidad: item.quantity || item.cantidad || 1,
+      precioUnitario: item.product?.price || item.service?.price || item.precio || 0,
+      subtotal: item.subtotal || 0,
+      descuento: item.descuento || 0,
+      categoria: item.product?.category || item.service?.category || item.categoria || 'Sin categoría'
+    }));
+
+    return {
+      ...transaction,
+      items,
+      __rawItems: raw
+    };
+  };
+
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'kiosk':
@@ -466,6 +580,8 @@ const Transactions: React.FC = () => {
         return <Calendar className="h-4 w-4 text-blue-600" />;
       case 'retiro':
         return <Minus className="h-4 w-4 text-red-600" />;
+      case 'gasto':
+        return <Minus className="h-4 w-4 text-orange-600" />;
       case 'caja-inicial':
         return <Plus className="h-4 w-4 text-yellow-600" />;
       default:
@@ -509,7 +625,7 @@ const Transactions: React.FC = () => {
     }
   };
 
-  // Totales (sobre filtradas)
+  // Calcular totales
   const totales = filteredTransactions.reduce((totals, transaction) => {
     totals.general += transaction.total;
     
@@ -518,9 +634,13 @@ const Transactions: React.FC = () => {
       totals.transferencia += transaction.paymentBreakdown.transferencia || 0;
       totals.expensa += transaction.paymentBreakdown.expensa || 0;
     } else {
-      if (transaction.metodo === 'efectivo') totals.efectivo += transaction.total;
-      else if (transaction.metodo === 'transferencia') totals.transferencia += transaction.total;
-      else if (transaction.metodo === 'expensa') totals.expensa += transaction.total;
+      if (transaction.metodo === 'efectivo') {
+        totals.efectivo += transaction.total;
+      } else if (transaction.metodo === 'transferencia') {
+        totals.transferencia += transaction.total;
+      } else if (transaction.metodo === 'expensa') {
+        totals.expensa += transaction.total;
+      }
     }
     
     return totals;
@@ -535,8 +655,7 @@ const Transactions: React.FC = () => {
             Registro completo de todas las transacciones del sistema
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex items-center space-x-2">
-          <SupervisorLogin /> {/* 👈 NUEVO */}
+        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <button
             onClick={exportAllTransactionsCSV}
             className="inline-flex items-center justify-center rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 shadow-sm hover:bg-green-100"
@@ -704,7 +823,7 @@ const Transactions: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabla */}
+      {/* Tabla de transacciones */}
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -821,18 +940,7 @@ const Transactions: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <button
                       onClick={() => {
-                        setSelectedTransaction({
-                          ...transaction,
-                          items: (transaction.items || []).map((item: any) => ({
-                            id: item.id || `item-${Date.now()}-${Math.random()}`,
-                            nombre: item.product?.name || item.service?.name || item.nombre || 'Item desconocido',
-                            cantidad: item.quantity || item.cantidad || 1,
-                            precioUnitario: item.product?.price || item.service?.price || item.precio || 0,
-                            subtotal: item.subtotal || 0,
-                            descuento: item.descuento || 0,
-                            categoria: item.product?.category || item.service?.category || item.categoria || 'Sin categoría'
-                          }))
-                        });
+                        setSelectedTransaction(prepareTransactionForModal(transaction));
                         setShowTransactionDetail(true);
                       }}
                       className="text-indigo-600 hover:text-indigo-900 flex items-center"
@@ -854,11 +962,11 @@ const Transactions: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de detalle */}
+      {/* Modal de detalle de transacción */}
       <TransactionDetailModal
         isOpen={showTransactionDetail}
         onClose={() => setShowTransactionDetail(false)}
-        transaction={selectedTransaction}
+        transaction={selectedTransaction as any}
       />
     </div>
   );
