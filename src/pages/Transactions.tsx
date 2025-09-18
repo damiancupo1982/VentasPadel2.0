@@ -21,6 +21,7 @@ import {
 import { useStore } from '../store/useStore';
 import TransactionDetailModal from '../components/TransactionDetailModal';
 import { exportData, importData } from '../utils/db';
+import AutoBackupControls from '../components/AutoBackupControls'; // ⬅️ NUEVO
 
 interface HistoricalTransaction {
   id: string;
@@ -660,6 +661,12 @@ const Transactions: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* ⬇️⬇️ NUEVO: Panel simple para Auto-Backup (elige carpeta + intervalo + backup ahora) */}
+      <div className="mb-6">
+        <AutoBackupControls />
+      </div>
+      {/* ⬆️⬆️ */}
 
       {/* Totales */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
