@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Download, 
@@ -15,10 +15,12 @@ import {
   MapPin,
   Receipt,
   Eye,
-  X
+  X,
+  Upload
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import TransactionDetailModal from '../components/TransactionDetailModal';
+import { exportData, importData } from '../utils/db';
 
 interface HistoricalTransaction {
   id: string;
@@ -56,7 +58,7 @@ const Transactions: React.FC = () => {
   const [showTransactionDetail, setShowTransactionDetail] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<HistoricalTransaction | null>(null);
 
-  // Estados temporales (UI) para filtros
+  // Estados separados para filtros (se aplican manualmente)
   const [tempSearchTerm, setTempSearchTerm] = useState('');
   const [tempDateFilter, setTempDateFilter] = useState('all');
   const [tempCustomDateStart, setTempCustomDateStart] = useState('');
@@ -64,19 +66,69 @@ const Transactions: React.FC = () => {
   const [tempTypeFilter, setTempTypeFilter] = useState('');
   const [tempPaymentFilter, setTempPaymentFilter] = useState('');
 
+  // Ref para input de archivo (importar backup)
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Cargar transacciones históricas
   useEffect(() => {
     loadHistoricalTransactions();
     refreshData();
   }, []);
 
+  // Actualizar transacciones cuando cambien ventas o facturas
   useEffect(() => {
     updateHistoricalTransactions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sales, courtBills]);
 
+  // Inicialmente mostrar sin filtros
   useEffect(() => {
     setFilteredTransactions(transactions);
   }, [transactions]);
+
+  /** ---------------- BACKUP: Exportar / Importar ---------------- */
+
+  const handleExportBackup = async () => {
+    try {
+      const data = await exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `villanueva-backup-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exportando backup:', err);
+      alert('Hubo un problema exportando el backup.');
+    }
+  };
+
+  const handleImportBackupClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportBackupChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      await importData(data);
+      await refreshData();
+      // Reconstruir tabla de historial con los datos importados
+      loadHistoricalTransactions();
+      updateHistoricalTransactions(true);
+      alert('Backup importado con éxito.');
+    } catch (err) {
+      console.error('Error importando backup:', err);
+      alert('No se pudo importar el backup. Verificá el archivo.');
+    } finally {
+      // limpiar valor del input para permitir reimportar el mismo archivo si hace falta
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  /** ---------------- HISTÓRICO ---------------- */
 
   const loadHistoricalTransactions = () => {
     try {
@@ -84,6 +136,8 @@ const Transactions: React.FC = () => {
       if (stored) {
         const parsed = JSON.parse(stored);
         setTransactions(parsed);
+      } else {
+        setTransactions([]);
       }
     } catch (error) {
       console.error('Error loading historical transactions:', error);
@@ -100,40 +154,44 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const updateHistoricalTransactions = () => {
+  const updateHistoricalTransactions = (force = false) => {
     const existingIds = new Set(transactions.map(t => t.id));
     const newTransactions: HistoricalTransaction[] = [];
 
-    // 1) Ventas del kiosco
+    // Ventas del kiosco
     sales.forEach(sale => {
-      if (!existingIds.has(sale.id)) {
-        const d = new Date(sale.createdAt);
-        newTransactions.push({
+      if (force || !existingIds.has(sale.id)) {
+        const saleDate = new Date(sale.createdAt);
+        const transaction: HistoricalTransaction = {
           id: sale.id,
-          fecha: d.toLocaleDateString('es-ES'),
-          hora: d.toLocaleTimeString('es-ES'),
-          tipo: sale.total < 0 ? 'retiro' : (sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk'),
+          fecha: saleDate.toLocaleDateString('es-ES'),
+          hora: saleDate.toLocaleTimeString('es-ES'),
+          tipo: sale.total < 0 ? 'retiro' : 
+                sale.customerName?.includes('Caja Inicial') ? 'caja-inicial' : 'kiosk',
           recibo: sale.receiptNumber,
           cliente: sale.customerName || 'Cliente general',
           lote: sale.lotNumber || '0',
-          origen: sale.total < 0 ? 'Retiro de Caja' : (sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' : (sale.courtId || 'Kiosco')),
+          origen: sale.total < 0 ? 'Retiro de Caja' : 
+                  sale.customerName?.includes('Caja Inicial') ? 'Caja Inicial' :
+                  sale.courtId || 'Kiosco',
           total: sale.total,
           metodo: sale.paymentMethod,
           paymentBreakdown: sale.paymentBreakdown,
           items: sale.items,
           createdAt: sale.createdAt
-        });
+        };
+        newTransactions.push(transaction);
       }
     });
 
-    // 2) Facturas de canchas
+    // Facturas de canchas
     courtBills.forEach(bill => {
-      if (!existingIds.has(bill.id)) {
-        const d = new Date(bill.createdAt);
-        newTransactions.push({
+      if (force || !existingIds.has(bill.id)) {
+        const billDate = new Date(bill.createdAt);
+        const transaction: HistoricalTransaction = {
           id: bill.id,
-          fecha: d.toLocaleDateString('es-ES'),
-          hora: d.toLocaleTimeString('es-ES'),
+          fecha: billDate.toLocaleDateString('es-ES'),
+          hora: billDate.toLocaleTimeString('es-ES'),
           tipo: 'court',
           recibo: bill.receiptNumber,
           cliente: bill.customerName,
@@ -144,24 +202,25 @@ const Transactions: React.FC = () => {
           paymentBreakdown: bill.paymentBreakdown,
           items: [...(bill.kioskItems || []), ...(bill.services || [])],
           createdAt: bill.createdAt
-        });
+        };
+        newTransactions.push(transaction);
       }
     });
 
-    // 3) Retiros y gastos guardados en AdminTurns (históricos)
+    // Retiros y gastos desde todos los turnos guardados
     const allTurns = JSON.parse(localStorage.getItem('villanueva-admin-turns') || '[]');
     allTurns.forEach((turn: any) => {
       if (turn.transactions) {
         turn.transactions.forEach((withdrawal: any) => {
-          if (!existingIds.has(withdrawal.id)) {
-            const d = new Date(withdrawal.createdAt);
-            newTransactions.push({
+          if (force || !existingIds.has(withdrawal.id)) {
+            const withdrawalDate = new Date(withdrawal.createdAt);
+            const transaction: HistoricalTransaction = {
               id: withdrawal.id,
-              fecha: d.toLocaleDateString('es-ES'),
-              hora: d.toLocaleTimeString('es-ES'),
+              fecha: withdrawalDate.toLocaleDateString('es-ES'),
+              hora: withdrawalDate.toLocaleTimeString('es-ES'),
               tipo: 'retiro',
               recibo: withdrawal.receiptNumber,
-              withdrawalId: withdrawal.withdrawalId || `RETIRO-${String(withdrawal.id).slice(-4)}`,
+              withdrawalId: withdrawal.withdrawalId || `RETIRO-${withdrawal.id.slice(-4)}`,
               cliente: `Retiro - ${withdrawal.adminName}`,
               lote: '0',
               origen: 'Retiro de Caja',
@@ -171,18 +230,19 @@ const Transactions: React.FC = () => {
               adminName: withdrawal.adminName,
               notes: withdrawal.notes,
               createdAt: withdrawal.createdAt
-            });
+            };
+            newTransactions.push(transaction);
           }
         });
       }
       if (turn.expenses) {
         turn.expenses.forEach((expense: any) => {
-          if (!existingIds.has(expense.id)) {
-            const d = new Date(expense.createdAt);
-            newTransactions.push({
+          if (force || !existingIds.has(expense.id)) {
+            const expenseDate = new Date(expense.createdAt);
+            const transaction: HistoricalTransaction = {
               id: expense.id,
-              fecha: d.toLocaleDateString('es-ES'),
-              hora: d.toLocaleTimeString('es-ES'),
+              fecha: expenseDate.toLocaleDateString('es-ES'),
+              hora: expenseDate.toLocaleTimeString('es-ES'),
               tipo: 'gasto',
               recibo: expense.receiptNumber,
               cliente: `Gasto - ${expense.adminName}`,
@@ -194,58 +254,26 @@ const Transactions: React.FC = () => {
               adminName: expense.adminName,
               notes: expense.detail,
               createdAt: expense.createdAt
-            });
+            };
+            newTransactions.push(transaction);
           }
         });
       }
     });
 
-    // 4) **NUEVO** — Retiros locales (villanueva-transactions) creados con withdrawCash()
-    try {
-      const localTx: any[] = JSON.parse(localStorage.getItem('villanueva-transactions') || '[]');
-      localTx
-        .filter(tx => tx && tx.kind === 'retiro')
-        .forEach(tx => {
-          if (!existingIds.has(tx.id)) {
-            const d = new Date(tx.createdAt);
-            newTransactions.push({
-              id: tx.id,
-              fecha: d.toLocaleDateString('es-ES'),
-              hora: d.toLocaleTimeString('es-ES'),
-              tipo: 'retiro',
-              recibo: tx.receiptNumber,
-              withdrawalId: `RETIRO-${String(tx.id).slice(-4)}`,
-              cliente: `Retiro - ${tx.adminName || 'Admin'}`,
-              lote: '0',
-              origen: 'Retiro de Caja',
-              total: tx.total, // ya negativo
-              metodo: 'efectivo',
-              items: [],
-              adminName: tx.adminName,
-              notes: tx.notes,
-              paymentBreakdown: tx.paymentBreakdown
-                ? {
-                    efectivo: tx.paymentBreakdown.efectivo || 0,
-                    transferencia: tx.paymentBreakdown.transferencia || 0,
-                    expensa: tx.paymentBreakdown.expensa || 0
-                  }
-                : { efectivo: tx.total, transferencia: 0, expensa: 0 },
-              createdAt: tx.createdAt
-            });
-          }
-        });
-    } catch (e) {
-      console.warn('No se pudieron leer retiros locales:', e);
-    }
-
-    if (newTransactions.length > 0) {
-      const updated = [...transactions, ...newTransactions]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    if (force) {
+      // En importación, reconstruimos todo desde cero
+      const updated = [...newTransactions].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       saveHistoricalTransactions(updated);
+    } else if (newTransactions.length > 0) {
+      const updatedTransactions = [...transactions, ...newTransactions]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      saveHistoricalTransactions(updatedTransactions);
     }
   };
 
-  // Aplicar filtros manualmente
+  /** ---------------- FILTROS ---------------- */
+
   const handleApplyFilters = () => {
     setSearchTerm(tempSearchTerm);
     setDateFilter(tempDateFilter);
@@ -253,7 +281,7 @@ const Transactions: React.FC = () => {
     setCustomDateEnd(tempCustomDateEnd);
     setTypeFilter(tempTypeFilter);
     setPaymentFilter(tempPaymentFilter);
-
+    
     applyFiltersWithValues(
       tempSearchTerm,
       tempDateFilter,
@@ -271,14 +299,14 @@ const Transactions: React.FC = () => {
     setTempCustomDateEnd('');
     setTempTypeFilter('');
     setTempPaymentFilter('');
-
+    
     setSearchTerm('');
     setDateFilter('all');
     setCustomDateStart('');
     setCustomDateEnd('');
     setTypeFilter('');
     setPaymentFilter('');
-
+    
     setFilteredTransactions(transactions);
   };
 
@@ -305,26 +333,28 @@ const Transactions: React.FC = () => {
     if (dateValue !== 'all') {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
       switch (dateValue) {
-        case 'today':
+        case 'today': {
           filtered = filtered.filter(t => new Date(t.createdAt) >= today);
           break;
+        }
         case 'yesterday': {
-          const y = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+          const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
           filtered = filtered.filter(t => {
             const d = new Date(t.createdAt);
-            return d >= y && d < today;
+            return d >= yesterday && d < today;
           });
           break;
         }
         case 'week': {
-          const start = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-          filtered = filtered.filter(t => new Date(t.createdAt) >= start);
+          const weekStart = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+          filtered = filtered.filter(t => new Date(t.createdAt) >= weekStart);
           break;
         }
         case 'month': {
-          const start = new Date(now.getFullYear(), now.getMonth(), 1);
-          filtered = filtered.filter(t => new Date(t.createdAt) >= start);
+          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          filtered = filtered.filter(t => new Date(t.createdAt) >= monthStart);
           break;
         }
         case 'custom': {
@@ -347,6 +377,8 @@ const Transactions: React.FC = () => {
     setFilteredTransactions(filtered);
   };
 
+  /** ---------------- EXPORTACIONES EXISTENTES ---------------- */
+
   const exportTransactionsCSV = () => {
     if (filteredTransactions.length === 0) {
       alert('No hay transacciones filtradas para exportar');
@@ -354,20 +386,9 @@ const Transactions: React.FC = () => {
     }
 
     const headers = [
-      'Fecha', 
-      'Hora', 
-      'Tipo', 
-      'Recibo', 
-      'ID Retiro', 
-      'Cliente', 
-      'Lote', 
-      'Origen', 
-      'Total', 
-      'Método', 
-      'Notas/Detalle', 
-      'Monto Efectivo', 
-      'Monto Transferencia', 
-      'Monto Expensa'
+      'Fecha', 'Hora', 'Tipo', 'Recibo', 'ID Retiro', 'Cliente', 'Lote',
+      'Origen', 'Total', 'Método', 'Notas/Detalle', 'Monto Efectivo',
+      'Monto Transferencia', 'Monto Expensa'
     ];
     
     const rows = filteredTransactions.map(transaction => {
@@ -378,13 +399,13 @@ const Transactions: React.FC = () => {
         expensaAmount = transaction.paymentBreakdown.expensa || 0;
       } else {
         if (transaction.metodo === 'efectivo') efectivoAmount = transaction.total;
-        if (transaction.metodo === 'transferencia') transferenciaAmount = transaction.total;
-        if (transaction.metodo === 'expensa') expensaAmount = transaction.total;
+        else if (transaction.metodo === 'transferencia') transferenciaAmount = transaction.total;
+        else if (transaction.metodo === 'expensa') expensaAmount = transaction.total;
       }
       const paymentMethodText = transaction.metodo === 'combinado'
         ? ['efectivo','transferencia','expensa']
-            .filter(k => ((transaction.paymentBreakdown as any)?.[k] || 0) !== 0)
-            .map(k => k === 'efectivo' ? 'Efectivo' : k === 'transferencia' ? 'Transferencia' : 'Expensa')
+            .filter(m => ({efectivo:efectivoAmount,transferencia:transferenciaAmount,expensa:expensaAmount}[m as any] > 0))
+            .map(m => m[0].toUpperCase()+m.slice(1))
             .join(' + ')
         : transaction.metodo;
 
@@ -428,24 +449,9 @@ const Transactions: React.FC = () => {
     }
 
     const headers = [
-      'Fecha',
-      'Hora', 
-      'Tipo',
-      'Recibo',
-      'ID Retiro',
-      'Cliente',
-      'Lote',
-      'Origen',
-      'Item',
-      'Cantidad',
-      'Precio Unitario',
-      'Subtotal Item',
-      'Total Transacción',
-      'Método',
-      'Efectivo',
-      'Transferencia', 
-      'Expensa',
-      'Notas'
+      'Fecha','Hora','Tipo','Recibo','ID Retiro','Cliente','Lote','Origen',
+      'Item','Cantidad','Precio Unitario','Subtotal Item',
+      'Total Transacción','Método','Efectivo','Transferencia','Expensa','Notas'
     ];
 
     const rows: string[][] = [];
@@ -461,31 +467,31 @@ const Transactions: React.FC = () => {
         transaction.lote || '-',
         transaction.origen
       ];
+      
+      let efectivoAmount = 0, transferenciaAmount = 0, expensaAmount = 0;
+      if (transaction.paymentBreakdown) {
+        efectivoAmount = transaction.paymentBreakdown.efectivo || 0;
+        transferenciaAmount = transaction.paymentBreakdown.transferencia || 0;
+        expensaAmount = transaction.paymentBreakdown.expensa || 0;
+      } else {
+        if (transaction.metodo === 'efectivo') efectivoAmount = transaction.total;
+        else if (transaction.metodo === 'transferencia') transferenciaAmount = transaction.total;
+        else if (transaction.metodo === 'expensa') expensaAmount = transaction.total;
+      }
 
-      const pmText = transaction.metodo === 'combinado'
+      const paymentMethodText = transaction.metodo === 'combinado'
         ? ['efectivo','transferencia','expensa']
-            .filter(k => ((transaction.paymentBreakdown as any)?.[k] || 0) !== 0)
-            .map(k => k === 'efectivo' ? 'Efectivo' : k === 'transferencia' ? 'Transferencia' : 'Expensa')
+            .filter(m => ({efectivo:efectivoAmount,transferencia:transferenciaAmount,expensa:expensaAmount}[m as any] > 0))
+            .map(m => m[0].toUpperCase()+m.slice(1))
             .join(' + ')
         : transaction.metodo;
-
-      let ef = 0, tr = 0, ex = 0;
-      if (transaction.paymentBreakdown) {
-        ef = transaction.paymentBreakdown.efectivo || 0;
-        tr = transaction.paymentBreakdown.transferencia || 0;
-        ex = transaction.paymentBreakdown.expensa || 0;
-      } else {
-        if (transaction.metodo === 'efectivo') ef = transaction.total;
-        if (transaction.metodo === 'transferencia') tr = transaction.total;
-        if (transaction.metodo === 'expensa') ex = transaction.total;
-      }
 
       if (transaction.items && transaction.items.length > 0) {
         transaction.items.forEach((item, idx) => {
           const name = item.product?.name || item.service?.name || item.nombre || 'Item desconocido';
           const qty = item.quantity || item.cantidad || 1;
           const price = item.product?.price || item.service?.price || item.precio || 0;
-          const sub = item.subtotal || (price * qty);
+          const subtotal = item.subtotal || (price * qty);
           const first = idx === 0;
 
           rows.push([
@@ -493,27 +499,26 @@ const Transactions: React.FC = () => {
             name,
             String(qty),
             String(price),
-            String(sub),
+            String(subtotal),
             first ? String(transaction.total) : '',
-            first ? pmText : '',
-            first ? String(ef) : '',
-            first ? String(tr) : '',
-            first ? String(ex) : '',
+            first ? paymentMethodText : '',
+            first ? String(efectivoAmount) : '',
+            first ? String(transferenciaAmount) : '',
+            first ? String(expensaAmount) : '',
             first ? (transaction.notes || '') : ''
           ]);
         });
       } else {
         rows.push([
           ...base,
-          'Sin items detallados',
-          '1',
+          'Sin items detallados','1',
           String(transaction.total),
           String(transaction.total),
           String(transaction.total),
-          pmText,
-          String(ef),
-          String(tr),
-          String(ex),
+          paymentMethodText,
+          String(efectivoAmount),
+          String(transferenciaAmount),
+          String(expensaAmount),
           transaction.notes || ''
         ]);
       }
@@ -534,6 +539,8 @@ const Transactions: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  /** ---------------- UI HELPERS ---------------- */
+
   const prepareTransactionForModal = (transaction: HistoricalTransaction): HistoricalTransaction => {
     const items = (transaction.items || []).map(item => ({
       id: item.id || `item-${Date.now()}-${Math.random()}`,
@@ -552,7 +559,6 @@ const Transactions: React.FC = () => {
       case 'kiosk': return <Package className="h-4 w-4 text-green-600" />;
       case 'court': return <Calendar className="h-4 w-4 text-blue-600" />;
       case 'retiro': return <Minus className="h-4 w-4 text-red-600" />;
-      case 'gasto': return <Minus className="h-4 w-4 text-orange-600" />;
       case 'caja-inicial': return <Plus className="h-4 w-4 text-yellow-600" />;
       default: return <Receipt className="h-4 w-4 text-gray-600" />;
     }
@@ -596,19 +602,19 @@ const Transactions: React.FC = () => {
     }
   };
 
-  // Totales de lo filtrado
-  const totales = filteredTransactions.reduce((acc, t) => {
-    acc.general += t.total;
-    if (t.metodo === 'combinado' && t.paymentBreakdown) {
-      acc.efectivo += t.paymentBreakdown.efectivo || 0;
-      acc.transferencia += t.paymentBreakdown.transferencia || 0;
-      acc.expensa += t.paymentBreakdown.expensa || 0;
+  // Totales en la vista (según filtro aplicado)
+  const totales = filteredTransactions.reduce((totals, transaction) => {
+    totals.general += transaction.total;
+    if (transaction.metodo === 'combinado' && transaction.paymentBreakdown) {
+      totals.efectivo += transaction.paymentBreakdown.efectivo || 0;
+      totals.transferencia += transaction.paymentBreakdown.transferencia || 0;
+      totals.expensa += transaction.paymentBreakdown.expensa || 0;
     } else {
-      if (t.metodo === 'efectivo') acc.efectivo += t.total;
-      if (t.metodo === 'transferencia') acc.transferencia += t.total;
-      if (t.metodo === 'expensa') acc.expensa += t.total;
+      if (transaction.metodo === 'efectivo') totals.efectivo += transaction.total;
+      else if (transaction.metodo === 'transferencia') totals.transferencia += transaction.total;
+      else if (transaction.metodo === 'expensa') totals.expensa += transaction.total;
     }
-    return acc;
+    return totals;
   }, { general: 0, efectivo: 0, transferencia: 0, expensa: 0 });
 
   return (
@@ -620,7 +626,31 @@ const Transactions: React.FC = () => {
             Registro completo de todas las transacciones del sistema
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-2">
+          {/* BACKUP: Exportar / Importar */}
+          <button
+            onClick={handleExportBackup}
+            className="inline-flex items-center justify-center rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-100"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Exportar Backup
+          </button>
+          <button
+            onClick={handleImportBackupClick}
+            className="inline-flex items-center justify-center rounded-md border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 shadow-sm hover:bg-sky-100"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Importar Backup
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={handleImportBackupChange}
+          />
+
+          {/* Exportaciones existentes */}
           <button
             onClick={exportAllTransactionsCSV}
             className="inline-flex items-center justify-center rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 shadow-sm hover:bg-green-100"
@@ -748,9 +778,7 @@ const Transactions: React.FC = () => {
         {tempDateFilter === 'custom' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fecha de Inicio
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Inicio</label>
               <input
                 type="date"
                 value={tempCustomDateStart}
@@ -759,9 +787,7 @@ const Transactions: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fecha de Fin
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Fin</label>
               <input
                 type="date"
                 value={tempCustomDateEnd}
@@ -808,61 +834,71 @@ const Transactions: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredTransactions.map((t) => (
-                <tr key={t.id} className="hover:bg-gray-50">
+              {filteredTransactions.map((transaction) => (
+                <tr key={transaction.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div>
-                      <div className="font-medium">{t.fecha}</div>
-                      <div className="text-gray-500">{t.hora}</div>
+                      <div className="font-medium">{transaction.fecha}</div>
+                      <div className="text-gray-500">{transaction.hora}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTypeColor(t.tipo)}`}>
-                      {getTypeIcon(t.tipo)}
-                      <span className="ml-1">{getTypeLabel(t.tipo)}</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTypeColor(transaction.tipo)}`}>
+                      {getTypeIcon(transaction.tipo)}
+                      <span className="ml-1">{getTypeLabel(transaction.tipo)}</span>
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{t.recibo}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{transaction.recibo}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {t.withdrawalId
-                      ? <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">{t.withdrawalId}</span>
-                      : <span className="text-gray-400">-</span>}
+                    {transaction.withdrawalId ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        {transaction.withdrawalId}
+                      </span>
+                    ) : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
                       <User className="h-4 w-4 text-gray-400 mr-2" />
-                      {t.cliente}
+                      {transaction.cliente}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
                       <MapPin className="h-4 w-4 text-gray-400 mr-2" />
-                      {t.lote}
+                      {transaction.lote}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t.origen}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaction.origen}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    <span className={t.total < 0 ? 'text-red-600' : 'text-green-600'}>${t.total.toFixed(2)}</span>
+                    <span className={transaction.total < 0 ? 'text-red-600' : 'text-green-600'}>
+                      ${transaction.total.toFixed(2)}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <div className="flex items-center">
-                      {getPaymentIcon(t.metodo)}
+                      {getPaymentIcon(transaction.metodo)}
                       <span className="ml-2 capitalize">
-                        {t.metodo === 'combinado'
-                          ? ['efectivo','transferencia','expensa']
-                              .filter(k => ((t.paymentBreakdown as any)?.[k] || 0) !== 0)
-                              .map(k => k === 'efectivo' ? 'Efectivo' : k === 'transferencia' ? 'Transferencia' : 'Expensa')
-                              .join(' + ')
-                          : t.metodo}
+                        {transaction.metodo === 'combinado'
+                          ? (() => {
+                              const m: string[] = [];
+                              if (transaction.paymentBreakdown?.efectivo > 0) m.push('Efectivo');
+                              if (transaction.paymentBreakdown?.transferencia > 0) m.push('Transferencia');
+                              if (transaction.paymentBreakdown?.expensa > 0) m.push('Expensa');
+                              return m.join(' + ');
+                            })()
+                          : transaction.metodo}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
-                    {t.notes ? <div className="truncate" title={t.notes}>{t.notes}</div> : <span className="text-gray-400">-</span>}
+                    {transaction.notes ? <div className="truncate" title={transaction.notes}>{transaction.notes}</div> : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <button
-                      onClick={() => { setSelectedTransaction(prepareTransactionForModal(t)); setShowTransactionDetail(true); }}
+                      onClick={() => {
+                        setSelectedTransaction(prepareTransactionForModal(transaction));
+                        setShowTransactionDetail(true);
+                      }}
                       className="text-indigo-600 hover:text-indigo-900 flex items-center"
                       title="Ver detalle completo"
                     >
@@ -874,7 +910,7 @@ const Transactions: React.FC = () => {
             </tbody>
           </table>
         </div>
-
+        
         {filteredTransactions.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-500">No se encontraron transacciones</p>
@@ -882,6 +918,7 @@ const Transactions: React.FC = () => {
         )}
       </div>
 
+      {/* Modal de detalle */}
       <TransactionDetailModal
         isOpen={showTransactionDetail}
         onClose={() => setShowTransactionDetail(false)}
